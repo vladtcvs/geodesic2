@@ -48,6 +48,26 @@ struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *a
     return g;
 }
 
+bool allowed_area(const struct tensor_1 *pos, global const double *args)
+{
+   	double rs = args[0];
+    double r = pos->x[1];
+
+    if (fabs(r-rs) < 1e-4)
+        return false;
+    return true;
+}
+
+bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, global const double *args)
+{
+    double rs = args[0];
+    double r = pos->x[1];
+    double dr = dpos->x[1];
+    if (r > rs && r+dr <= rs || r < rs && r+dr >= rs)
+        return false;
+    return true;
+}
+
 #elif USE_DECART
 
 struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args)
@@ -232,8 +252,9 @@ struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 
  * @param dir current direction
  * @param h iteration step
  * @param args parameters of metric
+ * @return can we continue this geodesic
  */
-void geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, double h, global const double *args)
+bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, double h, global const double *args)
 {
     int i;
     struct tensor_1 dir_k1 = geodesic_diff(pos, dir, args);
@@ -272,11 +293,29 @@ void geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, doubl
     struct tensor_1 dir_k4 = geodesic_diff(&pos_4, &dir_4, args);
     struct tensor_1 pos_k4 = dir_4;
 
+    struct tensor_1 delta_pos;
+    struct tensor_1 delta_dir;
+
+    bool bad = false;
+
     for (i = 0; i < DIM; i++)
     {
-        pos->x[i] += (pos_k1.x[i] + pos_k2.x[i]*2 + pos_k3.x[i]*2 + pos_k4.x[i]) * h/6;
-        dir->x[i] += (dir_k1.x[i] + dir_k2.x[i]*2 + dir_k3.x[i]*2 + dir_k4.x[i]) * h/6;
+        delta_pos.x[i] = (pos_k1.x[i] + pos_k2.x[i]*2 + pos_k3.x[i]*2 + pos_k4.x[i]) * h/6;
+        delta_dir.x[i] = (dir_k1.x[i] + dir_k2.x[i]*2 + dir_k3.x[i]*2 + dir_k4.x[i]) * h/6;
+        if (isnan(delta_pos.x[i]) || isinf(delta_pos.x[i]) || isnan(delta_dir.x[i]) || isinf(delta_dir.x[i]))
+            return false;
     }
+
+    if (!allowed_delta(pos, &delta_pos, args))
+        return false;
+
+    for (i = 0; i < DIM; i++)
+    {
+        pos->x[i] += delta_pos.x[i];
+        dir->x[i] += delta_dir.x[i];
+    }
+
+    return true;
 }
 
 /**
@@ -286,10 +325,11 @@ void geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, doubl
  * @param num amount of steps
  * @param pos current positions
  * @param dir current directions
+ * @param finished status of each geodesic
  * @param h iteration step
  * @param args parameters of metric
  */
-kernel void kernel_geodesic(int num, global double *pos, global double *dir, double h, global const double *args)
+kernel void kernel_geodesic(int num, global double *pos, global double *dir, global bool *finished, double h, global const double *args)
 {
     int id = get_global_id(0);
     int i;
@@ -301,19 +341,29 @@ kernel void kernel_geodesic(int num, global double *pos, global double *dir, dou
         .covar = {false},
     };
     
+    if (finished[id])
+        return;
+
     for (i = 0; i < DIM; i++)
     {
         cpos.x[i] = pos[DIM*id + i];
         cdir.x[i] = dir[DIM*id + i];
-
-		if (isnan(cpos.x[i]))
-			return;
-		if (isnan(cdir.x[i]))
-			return;
     }
 
 	for (i = 0; i < num; i++)
-    	geodesic_calculation_step(&cpos, &cdir, h, args);
+    {
+        if (!allowed_area(&cpos, args))
+        {
+            finished[id] = true;
+            break;
+        }
+
+    	if (!geodesic_calculation_step(&cpos, &cdir, h, args))
+        {
+            finished[id] = true;
+            break;
+        }
+    }
 
     for (i = 0; i < DIM; i++)
     {

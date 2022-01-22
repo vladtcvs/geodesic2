@@ -111,19 +111,6 @@ int file_lines(FILE *f)
 	return num_lines;
 }
 
-bool isvalid(const cl_double *pos, const cl_double *args)
-{
-	int i;
-	for (i = 0; i < DIM; i++)
-		if (isnan(pos[i]))
-			return false;
-	double r = pos[1];
-	double rs = args[0];
-	if (r <= rs)
-		return false;
-	return true;
-}
-
 int main(void)
 {
 	int i;
@@ -137,7 +124,7 @@ int main(void)
 	// Simulation
 	cl_double T = 150;
 	cl_double h = 5e-4;
-	cl_int num_steps = 1;
+	cl_int num_steps = 100;
 
 	// Init viewer light
 	// load it from file
@@ -146,8 +133,9 @@ int main(void)
 	
 	int num_objects = file_lines(input) - 1;
 
-	cl_double *pos = malloc(sizeof(cl_double) * DIM * num_objects);
-	cl_double *dir = malloc(sizeof(cl_double) * DIM * num_objects);
+	cl_double *pos   = malloc(sizeof(cl_double) * DIM * num_objects);
+	cl_double *dir   = malloc(sizeof(cl_double) * DIM * num_objects);
+    cl_bool   *finished = malloc(sizeof(cl_bool) * num_objects);
 
 	fseek(input, 0, SEEK_SET);
 	char line[1024];
@@ -169,23 +157,15 @@ int main(void)
 
 	printf("Loaded %i objects\n", num_objects);
 
-	// Store last correct direction
-	bool *is_collided = malloc(sizeof(bool) * num_objects);
-	cl_double *final_pos = malloc(sizeof(cl_double) * DIM * num_objects);
-	cl_double *final_dir = malloc(sizeof(cl_double) * DIM * num_objects);
-
 	for (i = 0; i < num_objects; i++)
-	{
-		is_collided[i] = false;
-	}
-	memcpy(final_pos, pos, sizeof(cl_double) * DIM * num_objects);
-	memcpy(final_dir, dir, sizeof(cl_double) * DIM * num_objects);
+		finished[i] = false;
 
 	size_t global;
 	size_t local;
 
 	cl_mem pos_mem;
 	cl_mem dir_mem;
+    cl_mem finished_mem;
 	cl_mem args_mem;
 
 	const char *source_fname = BINROOT "/geodesic.cl";
@@ -194,11 +174,14 @@ int main(void)
 
 	pos_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_double) * num_objects * DIM, NULL, NULL);
 	dir_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_double) * num_objects * DIM, NULL, NULL);
+    finished_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_bool) * num_objects, NULL, NULL);
 	args_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_double) * NUM_ARGS, NULL, NULL);
 
 	// Write initial positions and directions
-	int err = clEnqueueWriteBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, pos, 0, NULL, NULL);
+    int err;
+	err = clEnqueueWriteBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, pos, 0, NULL, NULL);
 	err = clEnqueueWriteBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, dir, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_bool) * num_objects, finished, 0, NULL, NULL);
 
 	// Write arguments
 	err = clEnqueueWriteBuffer(opencl_state.commands, args_mem, CL_TRUE, 0, sizeof(cl_double) * NUM_ARGS, args, 0, NULL, NULL);
@@ -206,8 +189,9 @@ int main(void)
 	err = clSetKernelArg(opencl_state.kernel, 0, sizeof(cl_int), &num_steps);
 	err |= clSetKernelArg(opencl_state.kernel, 1, sizeof(cl_mem), &pos_mem);
 	err |= clSetKernelArg(opencl_state.kernel, 2, sizeof(cl_mem), &dir_mem);
-	err |= clSetKernelArg(opencl_state.kernel, 3, sizeof(cl_double), &h);
-	err |= clSetKernelArg(opencl_state.kernel, 4, sizeof(cl_mem), &args_mem);
+    err |= clSetKernelArg(opencl_state.kernel, 3, sizeof(cl_mem), &finished_mem);
+	err |= clSetKernelArg(opencl_state.kernel, 4, sizeof(cl_double), &h);
+	err |= clSetKernelArg(opencl_state.kernel, 5, sizeof(cl_mem), &args_mem);
 
 	// Prepare calculation group
 	err = clGetKernelWorkGroupInfo(opencl_state.kernel, opencl_state.device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
@@ -217,35 +201,28 @@ int main(void)
 
 	// Run simulation
 	cl_double t;
-	for (t = 0; t < T; t += h)
+	for (t = 0; t < T; t += h*num_steps)
 	{
 		err = clEnqueueNDRangeKernel(opencl_state.commands, opencl_state.kernel, 1, NULL, &global, &local, 0, NULL, NULL);
 		clFinish(opencl_state.commands);
 
 		err = clEnqueueReadBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, pos, 0, NULL, NULL);
 		err = clEnqueueReadBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, dir, 0, NULL, NULL);
+        err = clEnqueueReadBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_bool) * num_objects, finished, 0, NULL, NULL);
+
+        /*if (!finished[0])
+        {
+            printf("%lf, %lf, %lf, %lf, %lf, %i\n", t, pos[0], pos[1], pos[2], pos[3], finished[0]);
+        }*/
 
 		bool all_collided = true;
 		for (i = 0; i < num_objects; i++)
 		{
-			int j;
-			if (is_collided[i])
-				continue;
-			all_collided = false;
-
-			const cl_double *cpos = &pos[DIM*i];
-			if (!isvalid(cpos, args))
-			{
-				is_collided[i] = true;
-			}
-			else
-			{
-				for (j = 0; j < DIM; j++)
-				{
-					final_pos[i * DIM + j] = pos[i * DIM + j];
-					final_dir[i * DIM + j] = dir[i * DIM + j];
-				}
-			}
+			if (!finished[i])
+            {
+                all_collided = false;
+				break;
+            }
 		}
 
 		if (all_collided)
@@ -255,6 +232,7 @@ int main(void)
 
 	clReleaseMemObject(pos_mem);
 	clReleaseMemObject(dir_mem);
+    clReleaseMemObject(finished_mem);
 	clReleaseMemObject(args_mem);
 
 	release_opencl(&opencl_state);
@@ -269,15 +247,15 @@ int main(void)
 
 	for (i = 0; i < num_objects; i++)
 	{
-		if (is_collided[i])
+		if (finished[i])
 			fprintf(output, "true");
 		else
 			fprintf(output, "false");
 		int j;
 		for (j = 0; j < DIM; j++)
-			fprintf(output, ", %lf", final_pos[DIM*i+j]);
+			fprintf(output, ", %lf", pos[DIM*i+j]);
 		for (j = 0; j < DIM; j++)
-			fprintf(output, ", %lf", final_dir[DIM*i+j]);
+			fprintf(output, ", %lf", dir[DIM*i+j]);
 		fprintf(output, "\n");
 	}
 
