@@ -1,9 +1,5 @@
 #define DIM 4
 
-#define USE_SPHERIC   1
-#define USE_DECART    0
-#define USE_LEMAITRE  0
-
 #define SQR(x) ((x)*(x))
 
 struct tensor_1
@@ -24,94 +20,12 @@ struct tensor_3
     double x[DIM][DIM][DIM];
 };
 
-/* Space description */
-
-#if USE_SPHERIC
-struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args)
-{
-	double rs = args[0];
-
-    struct tensor_2 g = {
-        .covar = {true, true}
-    };
-    double r = pos->x[1];
-    double theta = pos->x[2];
-    double phi = pos->x[3];
-
-    double k = 1 - rs / r;
-
-    g.x[0][0] = k;                  // g_tt
-    g.x[1][1] = -1/k;               // g_rr
-    g.x[2][2] = -SQR(r);            // g_thth
-    g.x[3][3] = -SQR(r*sin(theta)); //g_ff
-
-    return g;
-}
-
-bool allowed_area(const struct tensor_1 *pos, global const double *args)
-{
-   	double rs = args[0];
-    double r = pos->x[1];
-
-    if (fabs(r-rs) < 1e-4)
-        return false;
-    return true;
-}
-
-bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, global const double *args)
-{
-    double rs = args[0];
-    double r = pos->x[1];
-    double dr = dpos->x[1];
-    if (r > rs && r+dr <= rs || r < rs && r+dr >= rs)
-        return false;
-    return true;
-}
-
-#elif USE_DECART
-
-struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args)
-{
-	double rs = args[0];
-
-	struct tensor_2 g = {
-        .covar = {true, true}
-    };
-	
-    g.x[0][0] = 1;
-    g.x[1][1] = -1;
-    g.x[2][2] = -1;
-    g.x[3][3] = -1;
-
-    return g;
-}
-
-#elif USE_LEMAITRE
-
-struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args)
-{
-	double rs = args[0];
-
-	struct tensor_2 g = {
-        .covar = {true, true}
-    };
-	
-	double tau   = pos->x[0];
-	double rho   = pos->x[1];
-    double theta = pos->x[2];
-    double phi   = pos->x[3];
-
-	double r = pow(1.5*(rho-tau), 2.0/3.0) * pow(rs, 1.0/3.0);
-
-    g.x[0][0] = 1;                  // g_tau_tau
-    g.x[1][1] = -rs/r;              // g_rho_rho
-    g.x[2][2] = -SQR(r);            // g_theta_theta
-    g.x[3][3] = -SQR(r*sin(theta)); // g_phi_phi
-
-    return g;
-}
-
-#endif
+/**
+ * This functions must be added to code
+ */
+struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args);
+bool allowed_area(const struct tensor_1 *pos, global const double *args);
+bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, global const double *args);
 
 /**
  * Find contravariant metric tensor.
@@ -329,7 +243,7 @@ bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, doubl
  * @param h iteration step
  * @param args parameters of metric
  */
-kernel void kernel_geodesic(int num, global double *pos, global double *dir, global bool *finished, double h, global const double *args)
+kernel void kernel_geodesic(int num, global double *pos, global double *dir, global int *finished, double h, global const double *args)
 {
     int id = get_global_id(0);
     int i;
@@ -341,7 +255,7 @@ kernel void kernel_geodesic(int num, global double *pos, global double *dir, glo
         .covar = {false},
     };
     
-    if (finished[id])
+    if (finished[id] == 1)
         return;
 
     for (i = 0; i < DIM; i++)
@@ -354,13 +268,13 @@ kernel void kernel_geodesic(int num, global double *pos, global double *dir, glo
     {
         if (!allowed_area(&cpos, args))
         {
-            finished[id] = true;
+            finished[id] = 1;
             break;
         }
 
     	if (!geodesic_calculation_step(&cpos, &cdir, h, args))
         {
-            finished[id] = true;
+            finished[id] = 1;
             break;
         }
     }
@@ -371,3 +285,4 @@ kernel void kernel_geodesic(int num, global double *pos, global double *dir, glo
         dir[DIM*id + i] = cdir.x[i];
     }
 }
+
