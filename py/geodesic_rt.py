@@ -138,47 +138,25 @@ def calculate(rs, rays, T):
 dimensions = 4
 rs = 1
 r0 = 15
-fov = math.pi / 2
-pixels = 160
-T = 40
-
-# resulting image size
-W = 800
-H = 800
-sky_map = "sky_map.png"
-
+fov = math.pi
+pixels = 320
+T = 100
 
 init_rays = init_rays_equal
 
-recalc_geodesic = False
-recalc_angles = False
-
-
 rays, angles = init_rays(rs, r0, fov, pixels)
+final = calculate(rs, rays, T)
 
-# calculate geodesics for light rays
-if recalc_geodesic:
-    final = calculate(rs, rays, T)
-    rays.to_csv("input.csv", sep=',', index=False, line_terminator='\n')
-    final.to_csv("output.csv", sep=',', index=False, line_terminator='\n')
-else:
-    rays = pd.read_csv('input.csv', sep=',')
-    final = pd.read_csv('output.csv', sep=',')
+angles['final_angle'] = pd.Series(0.0, index=angles.index)
+angles['collided'] = final['collided']
 
-# angle - to - angle transform table
-if recalc_angles:
-    angles['collided'] = pd.Series(False, index=angles.index)
-    angles['final_angle'] = pd.Series(0.0, index=angles.index)
+for pix in range(pixels):
+    if not final.loc[pix]['collided']:
+        pos = [final.loc[pix]['pos%i' % i] for i in range(dimensions)]
+        dir = [final.loc[pix]['dir%i' % i] for i in range(dimensions)]
 
-    for pix in range(pixels):
-        if final.loc[pix, 'collided'] == True:
-            angles.at[pix, 'collided'] = True
-        else:
-            pos = [final.loc[pix]['pos%i' % i] for i in range(dimensions)]
-            dir = [final.loc[pix]['dir%i' % i] for i in range(dimensions)]
+        angles.at[pix, 'final_angle'] = get_angle(rs, pos, dir)
 
-            angles.at[pix, 'final_angle'] = get_angle(rs, pos, dir)
-
-    angles.to_csv("angles.csv", sep=',', index=False, line_terminator='\n')
-else:
-    angles  = pd.read_csv("angles.csv", sep=',')
+rays.to_csv("input.csv", sep=',', index=False, line_terminator='\n')
+final.to_csv("output.csv", sep=',', index=False, line_terminator='\n')
+angles.to_csv("angles.csv", sep=',', index=False, line_terminator='\n')
