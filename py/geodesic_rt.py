@@ -32,6 +32,7 @@ def run_calculation(rays, metric, args, length, h):
     output_file.close()
 
     run_args = [
+        BINARY,
         input_fname,                            # inital rays position & direction
         output_fname,                           # result of calculation
         os.path.join(CURDIR, metric + ".cl"),   # file with metric description
@@ -41,7 +42,9 @@ def run_calculation(rays, metric, args, length, h):
         str(num_steps)                          # extract data from OpenCL every each `num_steps`
         ]
 
-    subprocess.run([BINARY] + run_args)
+    print("Command: %s" % (' '.join(run_args)))
+
+    subprocess.run(run_args)
 
     result = pd.read_csv(output_fname, sep=',')
 
@@ -126,26 +129,27 @@ def get_angle(rs, pos, dir):
         gamma -= math.pi*2
     return gamma
 
-def calculate(rs, rays, T):
+def calculate(rs, rays, T, h):
     metric = 'schwarzschild'
 
     args = pd.DataFrame(columns=['arg'])
     args.loc[0] = [rs]
 
-    final = run_calculation(rays, metric, args, T, 5e-5)
+    final = run_calculation(rays, metric, args, T, h)
     return final
 
 dimensions = 4
 rs = 1
 r0 = 15
 fov = math.pi
-pixels = 5000
-T = 100
+pixels = 500
+T = 300
+h = 5e-5
 
 init_rays = init_rays_equal
 
 rays, angles = init_rays(rs, r0, fov, pixels)
-final = calculate(rs, rays, T)
+final = calculate(rs, rays, T, h)
 
 angles['final_angle'] = pd.Series(0.0, index=angles.index)
 angles['collided'] = final['collided']
