@@ -143,7 +143,7 @@ rs = 1
 r0 = 15
 fov = math.pi
 pixels = 500
-T = 300
+T = 100
 h = 5e-5
 
 init_rays = init_rays_equal

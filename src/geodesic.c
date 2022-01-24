@@ -14,7 +14,9 @@
 #define MAX_PLATFORMS 10
 #define MAX_DEVICES 20
 
-typedef cl_double cl_double;
+#define USE_DEVICE CL_DEVICE_TYPE_CPU
+
+typedef cl_double real;
 
 struct opencl_state_s
 {
@@ -59,10 +61,11 @@ void init_opencl(struct opencl_state_s *state, const char *source)
 
     printf("Number of platforms: %i\n", (int)state->num_platforms);
     state->num_devices = 0;
+
     for (i = 0; i < state->num_platforms && i < MAX_PLATFORMS; i++)
     {
         cl_uint nd;
-        err = clGetDeviceIDs(state->platform_ids[i], CL_DEVICE_TYPE_ALL, MAX_DEVICES, &state->device_ids[state->num_devices], &nd);
+        err = clGetDeviceIDs(state->platform_ids[i], USE_DEVICE, MAX_DEVICES, &state->device_ids[state->num_devices], &nd);
         state->num_devices += nd;
         printf("Platform %i. Number of devices: %i\n", i, (int)nd);
     }
@@ -164,7 +167,7 @@ int main(int argc, const char **argv)
     FILE *af = fopen(args_fname, "rt");
     int num_args = file_lines(af) - 1;
 
-    cl_double *args = malloc(sizeof(cl_double) * num_args);
+    real *args = malloc(sizeof(real) * num_args);
 
     fseek(af, 0, SEEK_SET);
     fgets(line, 1024, af);
@@ -181,8 +184,8 @@ int main(int argc, const char **argv)
     FILE *input = fopen(input_fname, "rt");
     int num_objects = file_lines(input) - 1;
 
-    cl_double *pos = malloc(sizeof(cl_double) * DIM * num_objects);
-    cl_double *dir = malloc(sizeof(cl_double) * DIM * num_objects);
+    real *pos = malloc(sizeof(real) * DIM * num_objects);
+    real *dir = malloc(sizeof(real) * DIM * num_objects);
     cl_int *finished = malloc(sizeof(cl_int) * num_objects);
 
     fseek(input, 0, SEEK_SET);
@@ -224,25 +227,25 @@ int main(int argc, const char **argv)
 
     init_opencl(&opencl_state, kernel);
 
-    pos_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_double) * num_objects * DIM, NULL, NULL);
-    dir_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_double) * num_objects * DIM, NULL, NULL);
+    pos_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(real) * num_objects * DIM, NULL, NULL);
+    dir_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(real) * num_objects * DIM, NULL, NULL);
     finished_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_int) * num_objects, NULL, NULL);
-    args_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(cl_double) * num_args, NULL, NULL);
+    args_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(real) * num_args, NULL, NULL);
 
     // Write initial positions and directions
     int err;
-    err = clEnqueueWriteBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, pos, 0, NULL, NULL);
-    err = clEnqueueWriteBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, dir, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, dir, 0, NULL, NULL);
     err = clEnqueueWriteBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
 
     // Write arguments
-    err = clEnqueueWriteBuffer(opencl_state.commands, args_mem, CL_TRUE, 0, sizeof(cl_double) * num_args, args, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(opencl_state.commands, args_mem, CL_TRUE, 0, sizeof(real) * num_args, args, 0, NULL, NULL);
 
     err = clSetKernelArg(opencl_state.kernel, 0, sizeof(cl_int), &num_steps);
     err |= clSetKernelArg(opencl_state.kernel, 1, sizeof(cl_mem), &pos_mem);
     err |= clSetKernelArg(opencl_state.kernel, 2, sizeof(cl_mem), &dir_mem);
     err |= clSetKernelArg(opencl_state.kernel, 3, sizeof(cl_mem), &finished_mem);
-    err |= clSetKernelArg(opencl_state.kernel, 4, sizeof(cl_double), &h);
+    err |= clSetKernelArg(opencl_state.kernel, 4, sizeof(real), &h);
     err |= clSetKernelArg(opencl_state.kernel, 5, sizeof(cl_mem), &args_mem);
 
     // Prepare calculation group
@@ -258,7 +261,7 @@ int main(int argc, const char **argv)
         local = global;
 
     // Run simulation
-    cl_double t;
+    real t;
     for (t = 0; t < T; t += h * num_steps)
     {
         err = clEnqueueNDRangeKernel(opencl_state.commands, opencl_state.kernel, 1, NULL, &global, &local, 0, NULL, NULL);
@@ -283,8 +286,8 @@ int main(int argc, const char **argv)
             break;
     }
 
-    err = clEnqueueReadBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, pos, 0, NULL, NULL);
-    err = clEnqueueReadBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(cl_double) * num_objects * DIM, dir, 0, NULL, NULL);
+    err = clEnqueueReadBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
+    err = clEnqueueReadBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, dir, 0, NULL, NULL);
     err = clEnqueueReadBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
     clFinish(opencl_state.commands);
 

@@ -2,30 +2,34 @@
 
 #define SQR(x) ((x)*(x))
 
+typedef double real;
+
+#define diff_h 1e-6
+
 struct tensor_1
 {
     bool covar[1];
-    double x[DIM];
+    real x[DIM];
 };
 
 struct tensor_2
 {
     bool covar[2];
-    double x[DIM][DIM];
+    real x[DIM][DIM];
 };
 
 struct tensor_3
 {
     bool covar[3];
-    double x[DIM][DIM][DIM];
+    real x[DIM][DIM][DIM];
 };
 
 /**
  * This functions must be added to code
  */
-struct tensor_2 metric_tensor(const struct tensor_1 *pos, __global const double *args);
-bool allowed_area(const struct tensor_1 *pos, __global const double *args);
-bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __global const double *args);
+struct tensor_2 metric_tensor(const struct tensor_1 *pos, __global const real *args);
+bool allowed_area(const struct tensor_1 *pos, __global const real *args);
+bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __global const real *args);
 
 /**
  * Find contravariant metric tensor.
@@ -56,22 +60,20 @@ struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *metric)
  * @param args parametrs of metric
  * @return metric derivative
  */
-struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, __global const double *args)
+struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, __global const real *args)
 {
 	int i, j, k;
 	struct tensor_3 dg = {
         .covar = {true, true, true}
     };
 
-	const double h = 1e-10;
-
 	for (i = 0; i < DIM; i++)
 	{
 		struct tensor_1 pos1 = *pos, pos2 = *pos, pos4 = *pos, pos5 = *pos;
-		pos1.x[i] -= 2*h;
-		pos2.x[i] -= h;
-		pos4.x[i] += h;
-		pos5.x[i] += 2*h;
+		pos1.x[i] -= 2*diff_h;
+		pos2.x[i] -= diff_h;
+		pos4.x[i] += diff_h;
+		pos5.x[i] += 2*diff_h;
 
 		struct tensor_2 g1 = metric_tensor(&pos1, args);
 		struct tensor_2 g2 = metric_tensor(&pos2, args);
@@ -81,7 +83,7 @@ struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, __global const
 		for (j = 0; j < DIM; j++)
 		for (k = 0; k < DIM; k++)
 		{
-			dg.x[i][j][k] = (g1.x[j][k] - 8*g2.x[j][k] + 8*g4.x[j][k] - g5.x[j][k]) / (12*h);
+			dg.x[i][j][k] = (g1.x[j][k] - 8*g2.x[j][k] + 8*g4.x[j][k] - g5.x[j][k]) / (12*diff_h);
 		}
 	}
 	return dg;
@@ -93,7 +95,7 @@ struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, __global const
  * @param args parameters of metric
  * @return cristofel symbol
  */
-struct tensor_3 cristofel_symbol(const struct tensor_1 *pos, __global const double *args)
+struct tensor_3 cristofel_symbol(const struct tensor_1 *pos, __global const real *args)
 {
 	int i, m, k, l;
 
@@ -151,7 +153,7 @@ struct tensor_1 geodesic_diff_G(const struct tensor_3* G, const struct tensor_1 
  * @param args parameters of metric
  * @return change of direction after moving along d
  */
-struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 *dir, __global const double *args)
+struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 *dir, __global const real *args)
 {
     struct tensor_3 G = cristofel_symbol(pos, args);
     struct tensor_1 d = geodesic_diff_G(&G, dir);
@@ -168,7 +170,7 @@ struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 
  * @param args parameters of metric
  * @return can we continue this geodesic
  */
-bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, double h, __global const double *args)
+bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, real h, __global const real *args)
 {
     int i;
     struct tensor_1 dir_k1 = geodesic_diff(pos, dir, args);
@@ -243,7 +245,7 @@ bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, doubl
  * @param h iteration step
  * @param args parameters of metric
  */
-kernel void kernel_geodesic(int num, __global double *pos, __global double *dir, __global int *finished, double h, __global const double *args)
+kernel void kernel_geodesic(int num, __global real *pos, __global real *dir, __global int *finished, real h, __global const real *args)
 {
     int id = get_global_id(0);
     int i;
