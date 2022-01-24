@@ -68,6 +68,8 @@ void init_opencl(struct opencl_state_s *state, const char *source)
         err = clGetDeviceIDs(state->platform_ids[i], USE_DEVICE, MAX_DEVICES, &state->device_ids[state->num_devices], &nd);
         state->num_devices += nd;
         printf("Platform %i. Number of devices: %i\n", i, (int)nd);
+        if (nd > 0)
+            break;
     }
     state->context = clCreateContext(0, state->num_devices, state->device_ids, NULL, NULL, &err);
 
