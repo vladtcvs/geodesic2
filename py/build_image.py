@@ -146,8 +146,8 @@ def getpixel(theta, phi, image):
 
 # resulting image size
 fov = 2*math.pi/3
-W = 15000
-H = 7500
+W = 3000
+H = 1500
 
 img = np.zeros((H, W, 3))
 

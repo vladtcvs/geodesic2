@@ -140,10 +140,10 @@ def calculate(rs, rays, T, h):
 
 dimensions = 4
 rs = 1
-r0 = 15
-fov = math.pi
-pixels = 500
-T = 100
+r0 = 1.02
+fov = math.pi*2
+pixels = 1000
+T = 25
 h = 5e-5
 
 init_rays = init_rays_equal

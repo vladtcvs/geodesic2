@@ -3,6 +3,7 @@
 #define SQR(x) ((x)*(x))
 
 typedef double real;
+typedef double4x4 real4x4;
 
 #define diff_h 1e-6
 
@@ -34,24 +35,54 @@ bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __gl
 /**
  * Find contravariant metric tensor.
  * It is just inverted matrix `g`
- * @param metric metric tensor in covariant form
+ * @param g metric tensor in covariant form
  * @return metric tensor in contravariant form
  */
-struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *metric)
+struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *g)
 {
-	struct tensor_2 g = {
+	struct tensor_2 ig = {
         .covar = {false, false}
     };
 
-	// WARNING: Here we assume that metric is diagonal!
-	// It is wrong in common case
-	// TODO: handle common case
+    real4x4 mat;
 
-	int i;
-	for (i = 0; i < DIM; i++)
-		g.x[i][i] = 1 / metric->x[i][i];
-	
-	return g;
+    mat._m00 = g->x[0][0];
+    mat._m01 = mat._m10 = g->x[0][1];
+    mat._m02 = mat._m20 = g->x[0][2];
+    mat._m03 = mat._m30 = g->x[0][3];
+
+    mat._m11 = g->x[1][1];
+    mat._m12 = mat._m21 = g->x[1][2];
+    mat._m13 = mat._m31 = g->x[1][3];
+
+    mat._m22 = g->x[2][2];
+    mat._m23 = mat._m32 = g->x[2][3];
+
+    mat._m33 = g->x[3][3];
+
+    real4x4 inv = inverse(mat);
+
+    ig.x[0][0] = inv._m00;
+    ig.x[0][1] = inv._m01;
+    ig.x[0][2] = inv._m02;
+    ig.x[0][3] = inv._m03;
+
+    ig.x[1][0] = inv._m10;
+    ig.x[1][1] = inv._m11;
+    ig.x[1][2] = inv._m12;
+    ig.x[1][3] = inv._m13;
+
+    ig.x[2][0] = inv._m20;
+    ig.x[2][1] = inv._m21;
+    ig.x[2][2] = inv._m22;
+    ig.x[2][3] = inv._m23;
+
+    ig.x[3][0] = inv._m30;
+    ig.x[3][1] = inv._m31;
+    ig.x[3][2] = inv._m32;
+    ig.x[3][3] = inv._m33;
+
+	return ig;
 }
 
 /**
