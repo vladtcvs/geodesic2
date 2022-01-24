@@ -23,13 +23,15 @@ struct opencl_state_s
     cl_uint num_platforms;
     cl_platform_id platform_ids[MAX_PLATFORMS];
 
-    cl_uint num_devices;
-    cl_device_id device_ids[MAX_PLATFORMS * MAX_DEVICES];
+    cl_uint num_devices[MAX_PLATFORMS];
+    cl_device_id device_ids[MAX_PLATFORMS][MAX_DEVICES];
 
-    cl_context context;        // compute context
-    cl_command_queue commands; // compute command queue
-    cl_program program;        // compute program
-    cl_kernel kernel;          // compute kernel
+    struct {
+        cl_context context;        // compute context
+        cl_program program;        // compute program
+        cl_kernel kernel;          // compute kernel
+        cl_command_queue commands[MAX_DEVICES]; // compute command queue
+    } units[MAX_PLATFORMS];
 };
 
 const char *opencl_error(int resv)
@@ -54,51 +56,67 @@ const char *opencl_error(int resv)
     }
 }
 
-void init_opencl(struct opencl_state_s *state, const char *source)
+void init_opencl(struct opencl_state_s *state)
 {
     int i;
     int err = clGetPlatformIDs(MAX_PLATFORMS, state->platform_ids, &state->num_platforms);
 
     printf("Number of platforms: %i\n", (int)state->num_platforms);
-    state->num_devices = 0;
-
     for (i = 0; i < state->num_platforms && i < MAX_PLATFORMS; i++)
     {
-        cl_uint nd;
-        err = clGetDeviceIDs(state->platform_ids[i], USE_DEVICE, MAX_DEVICES, &state->device_ids[state->num_devices], &nd);
-        state->num_devices += nd;
-        printf("Platform %i. Number of devices: %i\n", i, (int)nd);
-        if (nd > 0)
-            break;
+        err = clGetDeviceIDs(state->platform_ids[i], USE_DEVICE, MAX_DEVICES, state->device_ids[i], &state->num_devices[i]);
+        printf("Platform %i. Number of devices: %i\n", i, (int)state->num_devices[i]);
     }
-    state->context = clCreateContext(0, state->num_devices, state->device_ids, NULL, NULL, &err);
+}
 
-    state->program = clCreateProgramWithSource(state->context, 1, (const char **)&source, NULL, &err);
-    err = clBuildProgram(state->program, 0, NULL, NULL, NULL, NULL);
+void init_opencl_program(struct opencl_state_s *state, const char *source, int platform_id)
+{
+    if (state->num_devices[platform_id] == 0)
+        return;
 
-    size_t len;
-    char buffer[20480];
-    int resv = clGetProgramBuildInfo(state->program, state->device_ids[0], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+    int err;
+    state->units[platform_id].context = clCreateContext(0, state->num_devices[platform_id], state->device_ids[platform_id], NULL, NULL, &err);
 
-    printf("Get info: %s\n", opencl_error(resv));
-    printf("Log: %s\n", buffer);
+    state->units[platform_id].program = clCreateProgramWithSource(state->units[platform_id].context, 1, (const char **)&source, NULL, &err);
+    err = clBuildProgram(state->units[platform_id].program, 0, NULL, NULL, NULL, NULL);
+
+    int i;
+    for (i = 0; i < state->num_devices[platform_id]; i++)
+    {
+        size_t len;
+        char buffer[20480];
+        int resv = clGetProgramBuildInfo(state->units[platform_id].program, state->device_ids[platform_id][i], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+
+        printf("Get info: %s\n", opencl_error(resv));
+        printf("Log: %s\n", buffer);
+    }
 
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to build program executable!\n");
         exit(1);
     }
-    state->kernel = clCreateKernel(state->program, "kernel_geodesic", &err);
 
-    state->commands = clCreateCommandQueue(state->context, state->device_ids[0], 0, &err);
+    state->units[platform_id].kernel = clCreateKernel(state->units[platform_id].program, "kernel_geodesic", &err);
+
+    for (i = 0; i < state->num_devices[platform_id]; i++)
+        state->units[platform_id].commands[i] = clCreateCommandQueue(state->units[platform_id].context, state->device_ids[platform_id][i], 0, &err);
 }
 
 void release_opencl(struct opencl_state_s *state)
 {
-    clReleaseProgram(state->program);
-    clReleaseKernel(state->kernel);
-    clReleaseCommandQueue(state->commands);
-    clReleaseContext(state->context);
+    int i, j;
+
+    for (i = 0; i < state->num_platforms; i++)
+    {
+        if (state->num_devices[i] == 0)
+            continue;
+        clReleaseProgram(state->units[i].program);
+        clReleaseKernel(state->units[i].kernel);
+        clReleaseContext(state->units[i].context);
+        for (j = 0; j < state->num_devices[i]; j++)
+            clReleaseCommandQueue(state->units[i].commands[j]);
+    }
 }
 
 const char *load_source(const char *fname)
@@ -291,7 +309,6 @@ int main(int argc, const char **argv)
     size_t global;
     size_t local;
 
-    
     const char *source_fname = BINROOT "/geodesic.cl";
     const char *source = load_source(source_fname);
     const char *metric = load_source(metric_fname);
@@ -299,21 +316,37 @@ int main(int argc, const char **argv)
     strcpy(kernel_source, source);
     strcat(kernel_source, metric);
 
-    init_opencl(&opencl_state, kernel_source);
+    init_opencl(&opencl_state);
 
-    // Prepare calculation group
-    clGetKernelWorkGroupInfo(opencl_state.kernel, opencl_state.device_ids[0], CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
-    global = num_objects;
+    for (i = 0; i < opencl_state.num_platforms; i++)
+        init_opencl_program(&opencl_state, kernel_source, i);
 
-    printf("global work size: %i\n", (int)global);
-    printf("maximal local work size: %i\n", (int)local);
+    int platform_id = -1;
+    int device_id = -1;
 
-    // Run simulation
-    
+    for (i = 0; i < opencl_state.num_platforms; i++)
+    {
+        if (opencl_state.num_devices[i] > 0)
+        {
+            platform_id = i;
+            device_id = 0;
+            break;
+        }
+    }
 
-    perform_calculation(opencl_state.context, opencl_state.commands, opencl_state.kernel, T, h, pos, dir, finished, num_objects, args, num_args);
+    if (platform_id == -1)
+    {
+        printf("Can not find OpenCL device! Exiting\n");
+        return 0;
+    }
 
-    
+    printf("Select platform %i, device %i\n", platform_id, device_id);
+
+    perform_calculation(opencl_state.units[platform_id].context,
+                        opencl_state.units[platform_id].commands[device_id],
+                        opencl_state.units[platform_id].kernel,
+                        T, h, pos, dir, finished, num_objects, args, num_args);
+
     release_opencl(&opencl_state);
 
     FILE *output = fopen(output_fname, "wt");
@@ -339,6 +372,5 @@ int main(int argc, const char **argv)
     }
 
     fclose(output);
-
     return 0;
 }
