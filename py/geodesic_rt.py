@@ -99,7 +99,7 @@ def init_rays_equal(rs, r0, fov, nrays):
     angles = pd.DataFrame(columns=['init_angle'])
 
     for i in range(nrays):
-        angle = -fov/2 + fov * i / (nrays - 1)
+        angle = fov/2 * i / (nrays - 1)
         (dt, dr, dtheta, dphi) = ray(r0, angle, rs)
         rays.loc[i] = [0.0, r0, math.pi/2, 0.0, dt, dr, dtheta, dphi]
         angles.loc[i] = [angle]
@@ -139,7 +139,7 @@ dimensions = 4
 rs = 1
 r0 = 15
 fov = math.pi
-pixels = 320
+pixels = 5000
 T = 100
 
 init_rays = init_rays_equal

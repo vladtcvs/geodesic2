@@ -1,4 +1,4 @@
-struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args)
+struct tensor_2 metric_tensor(const struct tensor_1 *pos, __global const double *args)
 {
 	double rs = args[0];
 
@@ -19,7 +19,7 @@ struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *a
     return g;
 }
 
-bool allowed_area(const struct tensor_1 *pos, global const double *args)
+bool allowed_area(const struct tensor_1 *pos, __global const double *args)
 {
    	double rs = args[0];
     double r = pos->x[1];
@@ -29,12 +29,12 @@ bool allowed_area(const struct tensor_1 *pos, global const double *args)
     return true;
 }
 
-bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, global const double *args)
+bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __global const double *args)
 {
     double rs = args[0];
     double r = pos->x[1];
     double dr = dpos->x[1];
-    if (r > rs && r+dr <= rs || r < rs && r+dr >= rs)
+    if ((r > rs && r+dr <= rs) || (r < rs && r+dr >= rs))
         return false;
     return true;
 }

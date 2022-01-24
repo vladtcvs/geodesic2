@@ -23,9 +23,9 @@ struct tensor_3
 /**
  * This functions must be added to code
  */
-struct tensor_2 metric_tensor(const struct tensor_1 *pos, global const double *args);
-bool allowed_area(const struct tensor_1 *pos, global const double *args);
-bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, global const double *args);
+struct tensor_2 metric_tensor(const struct tensor_1 *pos, __global const double *args);
+bool allowed_area(const struct tensor_1 *pos, __global const double *args);
+bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __global const double *args);
 
 /**
  * Find contravariant metric tensor.
@@ -56,7 +56,7 @@ struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *metric)
  * @param args parametrs of metric
  * @return metric derivative
  */
-struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, global const double *args)
+struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, __global const double *args)
 {
 	int i, j, k;
 	struct tensor_3 dg = {
@@ -93,7 +93,7 @@ struct tensor_3 metric_derivative_num(const struct tensor_1 *pos, global const d
  * @param args parameters of metric
  * @return cristofel symbol
  */
-struct tensor_3 cristofel_symbol(const struct tensor_1 *pos, global const double *args)
+struct tensor_3 cristofel_symbol(const struct tensor_1 *pos, __global const double *args)
 {
 	int i, m, k, l;
 
@@ -151,7 +151,7 @@ struct tensor_1 geodesic_diff_G(const struct tensor_3* G, const struct tensor_1 
  * @param args parameters of metric
  * @return change of direction after moving along d
  */
-struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 *dir, global const double *args)
+struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 *dir, __global const double *args)
 {
     struct tensor_3 G = cristofel_symbol(pos, args);
     struct tensor_1 d = geodesic_diff_G(&G, dir);
@@ -168,7 +168,7 @@ struct tensor_1 geodesic_diff(const struct tensor_1 *pos, const struct tensor_1 
  * @param args parameters of metric
  * @return can we continue this geodesic
  */
-bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, double h, global const double *args)
+bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, double h, __global const double *args)
 {
     int i;
     struct tensor_1 dir_k1 = geodesic_diff(pos, dir, args);
@@ -243,7 +243,7 @@ bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, doubl
  * @param h iteration step
  * @param args parameters of metric
  */
-kernel void kernel_geodesic(int num, global double *pos, global double *dir, global int *finished, double h, global const double *args)
+kernel void kernel_geodesic(int num, __global double *pos, __global double *dir, __global int *finished, double h, __global const double *args)
 {
     int id = get_global_id(0);
     int i;

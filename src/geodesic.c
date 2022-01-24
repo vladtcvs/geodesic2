@@ -33,25 +33,54 @@ void init_opencl(struct opencl_state_s *state, const char *source)
     int i;
 	int err = clGetPlatformIDs(MAX_PLATFORMS, state->platform_ids, &state->num_platforms);
 
+    printf("Number of platforms: %i\n", (int)state->num_platforms);
     state->num_devices = 0;
     for (i = 0; i < state->num_platforms && i < MAX_PLATFORMS; i++)
     {
         cl_uint nd;
 	    err = clGetDeviceIDs(state->platform_ids[i], CL_DEVICE_TYPE_ALL, MAX_DEVICES, &state->device_ids[state->num_devices], &nd);
         state->num_devices += nd;
+        printf("Platform %i. Number of devices: %i\n", i, (int)nd);
     }
 	state->context = clCreateContext(0, state->num_devices, state->device_ids, NULL, NULL, &err);
 
 	state->program = clCreateProgramWithSource(state->context, 1, (const char **)&source, NULL, &err);
 	err = clBuildProgram(state->program, 0, NULL, NULL, NULL, NULL);
+
+    size_t len;
+	char buffer[20480];
+    int resv = clGetProgramBuildInfo(state->program, state->device_ids[0], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+    const char *res;
+    switch (resv)
+    {
+        case 0:
+            res = "ok";
+            break;
+        case CL_INVALID_DEVICE:
+            res = "invalid device";
+            break;
+        case CL_INVALID_VALUE:
+            res = "invalid value";
+            break;
+        case CL_INVALID_PROGRAM:
+            res = "invalid program";
+            break;
+        case CL_OUT_OF_RESOURCES:
+            res = "out of resources";
+            break;
+        case CL_OUT_OF_HOST_MEMORY:
+            res = "out of host memory";
+            break;
+        default:
+            res = "unknown";
+            break;
+    }
+    printf("Get info: %s\n", res);
+	printf("Log: %s\n", buffer);
+
 	if (err != CL_SUCCESS)
 	{
-		size_t len;
-		char buffer[20480];
-
 		printf("Error: Failed to build program executable!\n");
-		clGetProgramBuildInfo(state->program, state->device_ids[0], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
-		printf("%s\n", buffer);
 		exit(1);
 	}
 	state->kernel = clCreateKernel(state->program, "kernel_geodesic", &err);
@@ -217,7 +246,13 @@ int main(int argc, const char **argv)
 	// Prepare calculation group
 	err = clGetKernelWorkGroupInfo(opencl_state.kernel, opencl_state.device_ids[0], CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
 	global = num_objects;
-	if (local > global)
+
+    local = 8;
+
+    printf("global work size: %i\n", (int)global);
+    printf("local work size: %i\n", (int)local);
+
+    if (local > global)
 		local = global;
 
 	// Run simulation
