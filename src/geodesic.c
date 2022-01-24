@@ -14,7 +14,7 @@
 #define MAX_PLATFORMS 10
 #define MAX_DEVICES 20
 
-#define USE_DEVICE CL_DEVICE_TYPE_CPU
+#define USE_DEVICE CL_DEVICE_TYPE_ALL
 
 typedef cl_double real;
 
@@ -135,6 +135,82 @@ int file_lines(FILE *f)
     return num_lines;
 }
 
+void perform_calculation(cl_context context,
+                         cl_command_queue queue,
+                         cl_kernel kernel,
+                         real T, real h,
+                         real *pos,
+                         real *dir,
+                         cl_int *finished,
+                         size_t num_objects,
+                         real *args,
+                         size_t num_args)
+{
+    int err;
+    int i;
+    cl_int num_steps = 1000;
+
+    cl_mem pos_mem;
+    cl_mem dir_mem;
+    cl_mem finished_mem;
+
+    cl_mem args_mem;
+
+    pos_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(real) * num_objects * DIM, NULL, NULL);
+    dir_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(real) * num_objects * DIM, NULL, NULL);
+    finished_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_int) * num_objects, NULL, NULL);
+    args_mem = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(real) * num_args, NULL, NULL);
+
+    clEnqueueWriteBuffer(queue, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
+    clEnqueueWriteBuffer(queue, dir_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, dir, 0, NULL, NULL);
+    clEnqueueWriteBuffer(queue, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
+    clEnqueueWriteBuffer(queue, args_mem, CL_TRUE, 0, sizeof(real) * num_args, args, 0, NULL, NULL);
+
+    clFinish(queue);
+
+    clSetKernelArg(kernel, 0, sizeof(cl_int), &num_steps);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), &pos_mem);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), &dir_mem);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &finished_mem);
+    clSetKernelArg(kernel, 4, sizeof(real), &h);
+    clSetKernelArg(kernel, 5, sizeof(cl_mem), &args_mem);
+
+    real t;
+    for (t = 0; t < T; t += h * num_steps)
+    {
+        err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &num_objects, NULL, 0, NULL, NULL);
+        clFinish(queue);
+
+        err = clEnqueueReadBuffer(queue, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
+        clFinish(queue);
+
+        bool all_collided = true;
+        for (i = 0; i < num_objects; i++)
+        {
+            if (finished[i] == 0)
+            {
+                all_collided = false;
+                break;
+            }
+        }
+
+        printf("%lf / %lf\n", t, T);
+
+        if (all_collided)
+            break;
+    }
+
+    err = clEnqueueReadBuffer(queue, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
+    err = clEnqueueReadBuffer(queue, dir_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, dir, 0, NULL, NULL);
+    err = clEnqueueReadBuffer(queue, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
+    clFinish(queue);
+
+    clReleaseMemObject(pos_mem);
+    clReleaseMemObject(dir_mem);
+    clReleaseMemObject(finished_mem);
+    clReleaseMemObject(args_mem);
+}
+
 int main(int argc, const char **argv)
 {
     int i;
@@ -215,89 +291,29 @@ int main(int argc, const char **argv)
     size_t global;
     size_t local;
 
-    cl_mem pos_mem;
-    cl_mem dir_mem;
-    cl_mem finished_mem;
-    cl_mem args_mem;
-
+    
     const char *source_fname = BINROOT "/geodesic.cl";
     const char *source = load_source(source_fname);
     const char *metric = load_source(metric_fname);
-    char *kernel = malloc(strlen(source) + strlen(metric) + 3);
-    strcpy(kernel, source);
-    strcat(kernel, metric);
+    char *kernel_source = malloc(strlen(source) + strlen(metric) + 3);
+    strcpy(kernel_source, source);
+    strcat(kernel_source, metric);
 
-    init_opencl(&opencl_state, kernel);
-
-    pos_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(real) * num_objects * DIM, NULL, NULL);
-    dir_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(real) * num_objects * DIM, NULL, NULL);
-    finished_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_WRITE, sizeof(cl_int) * num_objects, NULL, NULL);
-    args_mem = clCreateBuffer(opencl_state.context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, sizeof(real) * num_args, NULL, NULL);
-
-    // Write initial positions and directions
-    int err;
-    err = clEnqueueWriteBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
-    err = clEnqueueWriteBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, dir, 0, NULL, NULL);
-    err = clEnqueueWriteBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
-
-    // Write arguments
-    err = clEnqueueWriteBuffer(opencl_state.commands, args_mem, CL_TRUE, 0, sizeof(real) * num_args, args, 0, NULL, NULL);
-
-    err = clSetKernelArg(opencl_state.kernel, 0, sizeof(cl_int), &num_steps);
-    err |= clSetKernelArg(opencl_state.kernel, 1, sizeof(cl_mem), &pos_mem);
-    err |= clSetKernelArg(opencl_state.kernel, 2, sizeof(cl_mem), &dir_mem);
-    err |= clSetKernelArg(opencl_state.kernel, 3, sizeof(cl_mem), &finished_mem);
-    err |= clSetKernelArg(opencl_state.kernel, 4, sizeof(real), &h);
-    err |= clSetKernelArg(opencl_state.kernel, 5, sizeof(cl_mem), &args_mem);
+    init_opencl(&opencl_state, kernel_source);
 
     // Prepare calculation group
-    err = clGetKernelWorkGroupInfo(opencl_state.kernel, opencl_state.device_ids[0], CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
+    clGetKernelWorkGroupInfo(opencl_state.kernel, opencl_state.device_ids[0], CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
     global = num_objects;
 
-    local = 8;
-
     printf("global work size: %i\n", (int)global);
-    printf("local work size: %i\n", (int)local);
-
-    if (local > global)
-        local = global;
+    printf("maximal local work size: %i\n", (int)local);
 
     // Run simulation
-    real t;
-    for (t = 0; t < T; t += h * num_steps)
-    {
-        err = clEnqueueNDRangeKernel(opencl_state.commands, opencl_state.kernel, 1, NULL, &global, &local, 0, NULL, NULL);
-        clFinish(opencl_state.commands);
+    
 
-        err = clEnqueueReadBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
-        clFinish(opencl_state.commands);
+    perform_calculation(opencl_state.context, opencl_state.commands, opencl_state.kernel, T, h, pos, dir, finished, num_objects, args, num_args);
 
-        bool all_collided = true;
-        for (i = 0; i < num_objects; i++)
-        {
-            if (finished[i] == 0)
-            {
-                all_collided = false;
-                break;
-            }
-        }
-
-        printf("%lf / %lf\n", t, T);
-
-        if (all_collided)
-            break;
-    }
-
-    err = clEnqueueReadBuffer(opencl_state.commands, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
-    err = clEnqueueReadBuffer(opencl_state.commands, dir_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, dir, 0, NULL, NULL);
-    err = clEnqueueReadBuffer(opencl_state.commands, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
-    clFinish(opencl_state.commands);
-
-    clReleaseMemObject(pos_mem);
-    clReleaseMemObject(dir_mem);
-    clReleaseMemObject(finished_mem);
-    clReleaseMemObject(args_mem);
-
+    
     release_opencl(&opencl_state);
 
     FILE *output = fopen(output_fname, "wt");
