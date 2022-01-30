@@ -76,6 +76,64 @@ size_t load_rays(const char *input_fname, real **pos, real **dir, cl_int **finis
         (*finished)[i] = 0;
 }
 
+void worker_function(struct opencl_state_s *opencl_state,
+                     struct dispatcher_s *dispatcher,
+                     int platform_id,
+                     int device_id,
+                     real T, real h,
+                     real *args,
+                     size_t num_args,
+                     int num_steps)
+{
+    while (dispatcher_has_data(dispatcher))
+    {
+        real *bpos, *bdir;
+        cl_int *bfinished;
+        FILE **boutput;
+
+        int amount = opencl_state->units[platform_id][device_id].max_parallel_points;
+
+        size_t num_objects_in_block = dispatcher_get_next_block(dispatcher, &bpos, &bdir, &bfinished, &boutput, amount);
+        if (num_objects_in_block == 0)
+        {
+            break;
+        }
+
+        perform_calculation(&opencl_state->units[platform_id][device_id],
+                            T, h, bpos, bdir, bfinished, num_objects_in_block,
+                            args, num_args, boutput, num_steps);
+    }
+}
+
+struct worker_s
+{
+    struct opencl_state_s *opencl_state;
+    struct dispatcher_s *dispatcher;
+    int platform_id;
+    int device_id;
+    real T;
+    real h;
+    real *args;
+    size_t num_args;
+    int num_steps;
+};
+
+void *worker_launcher(void *args)
+{
+    struct worker_s *worker = args;
+
+    worker_function(worker->opencl_state,
+                    worker->dispatcher,
+                    worker->platform_id,
+                    worker->device_id,
+                    worker->T,
+                    worker->h,
+                    worker->args,
+                    worker->num_args,
+                    worker->num_steps);
+    return NULL;
+}
+
 int main(int argc, const char **argv)
 {
     int i;
@@ -186,28 +244,34 @@ int main(int argc, const char **argv)
     struct dispatcher_s dispatcher;
     dispatcher_init(&dispatcher, pos, dir, finished, output_rays, num_objects);
 
-    while (dispatcher_has_data(&dispatcher))
+    struct worker_s workers[MAX_DEVICES * MAX_PLATFORMS];
+    pthread_t threads[MAX_DEVICES * MAX_PLATFORMS];
+    size_t num_workers = 0;
+
+    for (i = 0; i < opencl_state.num_platforms; i++)
     {
-        real *bpos, *bdir;
-        cl_int *bfinished;
-        FILE **boutput;
-
-        int amount = opencl_state.units[platform_id][device_id].max_parallel_points;
-
-        size_t num_objects_in_block = dispatcher_get_next_block(&dispatcher, &bpos, &bdir, &bfinished, &boutput, amount);
-        if (num_objects_in_block == 0)
+        int j;
+        for (j = 0; j < opencl_state.num_devices[i]; j++)
         {
-            break;
+            struct worker_s *worker = &workers[num_workers];
+            worker->opencl_state = &opencl_state;
+            worker->dispatcher = &dispatcher;
+            worker->platform_id = i;
+            worker->device_id = j;
+            worker->T = T;
+            worker->h = h;
+            worker->args = args;
+            worker->num_args = num_args;
+            worker->num_steps = num_steps;
+            num_workers++;
         }
-    
-        perform_calculation(&opencl_state.units[platform_id][device_id],
-                            T, h, bpos, bdir, bfinished, num_objects_in_block,
-                            args, num_args, boutput, num_steps);
-        /*
-        perform_calculation(&opencl_state.units[platform_id][device_id],
-                            T, h, pos, dir, finished, num_objects,
-                            args, num_args, output_rays, num_steps);*/
     }
+
+    for (i = 0; i < num_workers; i++)
+        pthread_create(&threads[i], NULL, worker_launcher, &workers[i]);
+    
+    for (i = 0; i < num_workers; i++)
+        pthread_join(threads[i], NULL);
 
     release_opencl(&opencl_state);
 
