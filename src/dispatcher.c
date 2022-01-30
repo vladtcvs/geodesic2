@@ -13,24 +13,39 @@ void dispatcher_init(struct dispatcher_s *dispatcher, real *pos, real *dir, cl_i
     dispatcher->max_per_block = 256;
 }
 
-size_t dispatcher_get_next_block(struct dispatcher_s *dispatcher, real **pos, real **dir, cl_int **finished, FILE ***output)
+size_t dispatcher_get_next_block(struct dispatcher_s *dispatcher,
+                                 real **pos,
+                                 real **dir,
+                                 cl_int **finished,
+                                 FILE ***output,
+                                 int amount)
 {
-    size_t num = min(dispatcher->num_objects - dispatcher->num_completed, dispatcher->max_per_block);
+    if (amount <= 0)
+    {
+        amount = dispatcher->max_per_block;
+    }
+
+    size_t num = min(dispatcher->num_objects - dispatcher->num_completed, amount);
     if (num > 0)
     {
-        *pos = &dispatcher->pos[dispatcher->num_completed];
-        *dir = &dispatcher->dir[dispatcher->num_completed];
+        *pos = &(dispatcher->pos[dispatcher->num_completed*DIM]);
+        *dir = &(dispatcher->dir[dispatcher->num_completed*DIM]);
         if (dispatcher->output != NULL)
         {
-            *output = &dispatcher->output[dispatcher->num_completed];
+            *output = &(dispatcher->output[dispatcher->num_completed]);
         }
         else
         {
             *output = NULL;
         }
     
-        *finished = &dispatcher->finished[dispatcher->num_completed];
+        *finished = &(dispatcher->finished[dispatcher->num_completed]);
         dispatcher->num_completed += num;
     }
     return num;
+}
+
+bool dispatcher_has_data(const struct dispatcher_s *dispatcher)
+{
+    return (dispatcher->num_objects > dispatcher->num_completed);
 }

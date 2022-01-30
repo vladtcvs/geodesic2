@@ -186,13 +186,15 @@ int main(int argc, const char **argv)
     struct dispatcher_s dispatcher;
     dispatcher_init(&dispatcher, pos, dir, finished, output_rays, num_objects);
 
-    while (true)
+    while (dispatcher_has_data(&dispatcher))
     {
         real *bpos, *bdir;
         cl_int *bfinished;
         FILE **boutput;
 
-        size_t num_objects_in_block = dispatcher_get_next_block(&dispatcher, &bpos, &bdir, &bfinished, &boutput);
+        int amount = opencl_state.units[platform_id][device_id].max_parallel_points;
+
+        size_t num_objects_in_block = dispatcher_get_next_block(&dispatcher, &bpos, &bdir, &bfinished, &boutput, amount);
         if (num_objects_in_block == 0)
         {
             break;
@@ -201,7 +203,10 @@ int main(int argc, const char **argv)
         perform_calculation(&opencl_state.units[platform_id][device_id],
                             T, h, bpos, bdir, bfinished, num_objects_in_block,
                             args, num_args, boutput, num_steps);
-
+        /*
+        perform_calculation(&opencl_state.units[platform_id][device_id],
+                            T, h, pos, dir, finished, num_objects,
+                            args, num_args, output_rays, num_steps);*/
     }
 
     release_opencl(&opencl_state);

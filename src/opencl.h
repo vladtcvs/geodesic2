@@ -7,6 +7,8 @@ struct calculation_unit_s {
     cl_program program;        // compute program
     cl_kernel kernel;          // compute kernel
     cl_command_queue queue;   // compute command queue
+
+    int max_parallel_points;
 };
 
 struct opencl_state_s

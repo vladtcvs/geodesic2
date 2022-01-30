@@ -71,6 +71,8 @@ void init_opencl_program(struct opencl_state_s *state, const char *source)
 
             unit->kernel = clCreateKernel(unit->program, "kernel_geodesic", &err);
             unit->queue = clCreateCommandQueue(unit->context, device_id, 0, &err);
+
+            unit->max_parallel_points = 1024;
         }
     }
 }
