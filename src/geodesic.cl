@@ -3,7 +3,6 @@
 #define SQR(x) ((x)*(x))
 
 typedef double real;
-typedef double4x4 real4x4;
 
 #define diff_h 1e-6
 
@@ -29,60 +28,54 @@ struct tensor_3
  * This functions must be added to code
  */
 struct tensor_2 metric_tensor(const struct tensor_1 *pos, __global const real *args);
+struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *g);
+
 bool allowed_area(const struct tensor_1 *pos, __global const real *args);
-bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __global const real *args);
+bool allowed_delta(const struct tensor_1 *pos,
+                   const struct tensor_1 *dir,
+                   const struct tensor_1 *dpos,
+                   const struct tensor_1 *ddir,
+                   __global const real *args);
+
+void limit_dir(struct tensor_1 *dir)
+{
+    const real maxd = 1e2;
+    int i;
+
+    real md = 0;
+    for (i = 0; i < DIM; i++)
+    {
+        if (fabs(dir->x[i]) > md)
+            md = fabs(dir->x[i]);
+    }
+
+    if (md > maxd)
+    {
+        for (i = 0; i < DIM; i++)
+        {
+            dir->x[i] *= maxd / md;
+        }
+    }
+}
 
 /**
- * Find contravariant metric tensor.
+ * Find contravariant metric tensor for diagonal case
  * It is just inverted matrix `g`
  * @param g metric tensor in covariant form
  * @return metric tensor in contravariant form
  */
-struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *g)
+struct tensor_2 contravariant_metric_tensor_diagonal(const struct tensor_2 *g)
 {
 	struct tensor_2 ig = {
         .covar = {false, false}
     };
 
-    real4x4 mat;
+    int i;
 
-    mat._m00 = g->x[0][0];
-    mat._m01 = mat._m10 = g->x[0][1];
-    mat._m02 = mat._m20 = g->x[0][2];
-    mat._m03 = mat._m30 = g->x[0][3];
-
-    mat._m11 = g->x[1][1];
-    mat._m12 = mat._m21 = g->x[1][2];
-    mat._m13 = mat._m31 = g->x[1][3];
-
-    mat._m22 = g->x[2][2];
-    mat._m23 = mat._m32 = g->x[2][3];
-
-    mat._m33 = g->x[3][3];
-
-    real4x4 inv = inverse(mat);
-
-    ig.x[0][0] = inv._m00;
-    ig.x[0][1] = inv._m01;
-    ig.x[0][2] = inv._m02;
-    ig.x[0][3] = inv._m03;
-
-    ig.x[1][0] = inv._m10;
-    ig.x[1][1] = inv._m11;
-    ig.x[1][2] = inv._m12;
-    ig.x[1][3] = inv._m13;
-
-    ig.x[2][0] = inv._m20;
-    ig.x[2][1] = inv._m21;
-    ig.x[2][2] = inv._m22;
-    ig.x[2][3] = inv._m23;
-
-    ig.x[3][0] = inv._m30;
-    ig.x[3][1] = inv._m31;
-    ig.x[3][2] = inv._m32;
-    ig.x[3][3] = inv._m33;
-
-	return ig;
+    for (i = 0; i < DIM; i++)
+        ig.x[i][i] = 1/g->x[i][i];
+    
+    return ig;
 }
 
 /**
@@ -253,7 +246,7 @@ bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, real 
             return false;
     }
 
-    if (!allowed_delta(pos, &delta_pos, args))
+    if (!allowed_delta(pos, dir, &delta_pos, &delta_dir, args))
         return false;
 
     for (i = 0; i < DIM; i++)
@@ -279,7 +272,7 @@ bool geodesic_calculation_step(struct tensor_1 *pos, struct tensor_1 *dir, real 
 kernel void kernel_geodesic(int num, __global real *pos, __global real *dir, __global int *finished, real h, __global const real *args)
 {
     int id = get_global_id(0);
-    int i;
+    int i, j;
 
     struct tensor_1 cpos = {
         .covar = {false},
@@ -304,6 +297,8 @@ kernel void kernel_geodesic(int num, __global real *pos, __global real *dir, __g
             finished[id] = 1;
             break;
         }
+
+        limit_dir(&cdir);
 
     	if (!geodesic_calculation_step(&cpos, &cdir, h, args))
         {

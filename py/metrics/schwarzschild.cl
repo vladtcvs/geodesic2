@@ -29,7 +29,11 @@ bool allowed_area(const struct tensor_1 *pos, __global const real *args)
     return true;
 }
 
-bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __global const real *args)
+bool allowed_delta(const struct tensor_1 *pos,
+                   const struct tensor_1 *dir,
+                   const struct tensor_1 *dpos,
+                   const struct tensor_1 *ddir,
+                   __global const real *args)
 {
     real rs = args[0];
     real r = pos->x[1];
@@ -37,4 +41,9 @@ bool allowed_delta(const struct tensor_1 *pos, const struct tensor_1 *dpos, __gl
     if ((r > rs && r+dr <= rs) || (r < rs && r+dr >= rs))
         return false;
     return true;
+}
+
+struct tensor_2 contravariant_metric_tensor(const struct tensor_2 *g)
+{
+    return contravariant_metric_tensor_diagonal(g);
 }

@@ -4,11 +4,51 @@ import pandas as pd
 import subprocess
 import math
 
+import lemaitre
+import kruskal
+import schwarzschild
+
+ray = {
+    "schwarzschild" : schwarzschild.ray,
+    "lemaitre" : lemaitre.ray,
+    "kruskal" : kruskal.ray,
+}
+
+transform_to = {
+    "schwarzschild" : schwarzschild.transform_to,
+    "lemaitre" : lemaitre.transform_to,
+    "kruskal" : kruskal.transform_to,
+}
+
+transform_from = {
+    "schwarzschild" : schwarzschild.transform_from,
+    "lemaitre" : lemaitre.transform_from,
+    "kruskal" : kruskal.transform_from,
+}
+
+collision = {
+    "schwarzschild" : schwarzschild.collision,
+    "lemaitre" : lemaitre.collision,
+    "kruskal" : kruskal.collision,
+}
+
+def build_ray(metric, r0, alpha, rs):
+    return ray[metric](r0, alpha, rs)
+
+def transform_from_target(metric, pos, dir, rs):
+    return transform_from[metric](pos, dir, rs)
+
+def transform_to_target(metric, pos, dir, rs):
+    return transform_to[metric](pos, dir, rs)
+
+def check_collision(metric, pos, rs):
+    return collision[metric](pos, rs)
+
 CURDIR = os.path.dirname(os.path.abspath(__file__))
 BINARY = os.path.join(CURDIR, "geodesic2")
 
-def run_calculation(rays, metric, args, length, h):
-    num_steps = 1000
+def run_calculation(rays, metric, args, length, h, save_rays_dir):
+    num_steps = 100
 
     # saving initial to file
     input_file = tempfile.NamedTemporaryFile(mode='wt',delete=False)
@@ -39,54 +79,33 @@ def run_calculation(rays, metric, args, length, h):
         args_fname,
         "%lf" % length,                         # length of integration
         "%lf" % h,                              # step of integration
-        str(num_steps)                          # extract data from OpenCL every each `num_steps`
+        str(num_steps),                         # extract data from OpenCL every each `num_steps`
         ]
+    if save_rays_dir is not None:
+        run_args.append(save_rays_dir)
 
     print("Command: %s" % (' '.join(run_args)))
 
     subprocess.run(run_args)
 
-    result = pd.read_csv(output_fname, sep=',')
+    print("input:  %s" % input_fname)
+    print("output: %s" % output_fname)
+
+    types = {}
+    
+    types['collided'] = "bool"
+    for i in range(4):
+        types['pos%i' % i] = 'float'
+        types['dir%i' % i] = 'float'
+
+    result = pd.read_csv(output_fname, sep=',', dtype=types)
 
     os.remove(input_fname)
     os.remove(output_fname)
     os.remove(args_fname)
-
     return result
 
-def ray(r0, alpha, rs):
-    k = 1 - rs/r0
-    d = (k / (1/k * math.cos(alpha)**2 + math.sin(alpha)**2))**0.5
-    dr = -d * math.cos(alpha)
-    dphi = d * math.sin(alpha) / r0
-    return (-1, dr, 0, dphi)
-
-def init_rays_perspective(rs, r0, fov, nrays):
-    columns = []
-    dtypes = []
-
-    for i in range(dimensions):
-        columns.append('pos%i' % i)
-        dtypes.append('float64')
-
-    for i in range(dimensions):
-        columns.append('dir%i' % i)
-        dtypes.append('float64')
-
-    rays = pd.DataFrame(columns=columns)
-
-    w = math.tan(fov/2)
-
-    for i in range(nrays):
-        s = 2*i/(nrays-1)-1
-        tan = w*s
-        angle = math.atan(tan)
-        (dt, dr, dtheta, dphi) = ray(r0, angle, rs)
-        rays.loc[i] = [0.0, r0, math.pi/2, 0.0, dt, dr, dtheta, dphi]
-
-    return rays
-
-def init_rays_equal(rs, r0, fov, nrays):
+def init_rays(rs, r0, fov, nrays, metric):
     columns = []
     dtypes = []
 
@@ -101,15 +120,29 @@ def init_rays_equal(rs, r0, fov, nrays):
     rays = pd.DataFrame(columns=columns)
     angles = pd.DataFrame(columns=['init_angle'])
 
+    nr = 0
     for i in range(nrays):
         angle = fov/2 * i / (nrays - 1)
-        (dt, dr, dtheta, dphi) = ray(r0, angle, rs)
-        rays.loc[i] = [0.0, r0, math.pi/2, 0.0, dt, dr, dtheta, dphi]
-        angles.loc[i] = [angle]
+
+        valid, pos, dir = build_ray(metric, r0, angle, rs)
+
+        maxd = max([abs(item) for item in dir])
+        if maxd > 10:
+            k = maxd / 10
+            dir = [item/k for item in dir]
+
+        if valid:
+            rays.loc[nr] = [pos[0], pos[1], pos[2], pos[3], dir[0], dir[1], dir[2], dir[3]]
+            angles.loc[nr] = [angle]
+            nr += 1
 
     return rays, angles
 
-def get_angle(rs, pos, dir):
+def get_output_angle(metric, pos, dir, rs):
+    valid, pos, dir, attrs = transform_from_target(metric, pos, dir, rs)
+    if not valid:
+        return False, 0, None
+
     r = pos[1]
     phi = pos[3]
 
@@ -120,46 +153,70 @@ def get_angle(rs, pos, dir):
     dr /= abs(dt)
     dphi /= abs(dt)
 
-    alpha = math.atan2(r*dphi, -dr)
+    alpha = math.atan2((r-rs)*dphi, -dr)
     gamma = math.pi - (phi + (math.pi - alpha))
 
     while gamma < -math.pi:
         gamma += math.pi*2
     while gamma > math.pi:
         gamma -= math.pi*2
-    return gamma
 
-def calculate(rs, rays, T, h):
-    metric = 'schwarzschild'
+    if metric == "kruskal":
+        area = attrs["area"]
+        if area == 1:
+            world = 1
+        elif area == 3:
+            world = 2
+        else:
+            world = None
+    else:
+        world = 1
+    return True, gamma, world
 
+def calculate_rays(rs, rays, T, h, metric, save_rays_dir):
     args = pd.DataFrame(columns=['arg'])
     args.loc[0] = [rs]
-
-    final = run_calculation(rays, metric, args, T, h)
+    final = run_calculation(rays, "metrics/" + metric, args, T, h, save_rays_dir)
     return final
 
 dimensions = 4
 rs = 1
-r0 = 1.02
+r0 = 0.8
 fov = math.pi*2
 pixels = 1000
-T = 25
-h = 5e-5
+T = 30
+h = 5e-6
+#metric = 'schwarzschild'
+#metric = 'lemaitre'
+metric = 'kruskal'
 
-init_rays = init_rays_equal
+#save_rays_dir = 'rays'
+save_rays_dir = None
 
-rays, angles = init_rays(rs, r0, fov, pixels)
-final = calculate(rs, rays, T, h)
+rays, angles = init_rays(rs, r0, fov, pixels, metric)
+final = calculate_rays(rs, rays, T, h, metric, save_rays_dir)
 
 angles['final_angle'] = pd.Series(0.0, index=angles.index)
-angles['collided'] = final['collided']
+angles['collided'] = pd.Series(False, index=angles.index)
 
 for pix in range(pixels):
-    if not final.loc[pix]['collided']:
-        pos = [final.loc[pix]['pos%i' % i] for i in range(dimensions)]
-        dir = [final.loc[pix]['dir%i' % i] for i in range(dimensions)]
+    pos = [final.loc[pix]['pos%i' % i] for i in range(dimensions)]
+    dir = [final.loc[pix]['dir%i' % i] for i in range(dimensions)]
 
-        angles.at[pix, 'final_angle'] = get_angle(rs, pos, dir)
+    is_collided = check_collision(metric, pos, rs)
+
+    if is_collided:
+        angles.at[pix, 'collided'] = True
+        angles.at[pix, 'world'] = -1
+    else:
+        valid, gamma, world = get_output_angle(metric, pos, dir, rs)
+
+        if valid:
+            angles.at[pix, 'final_angle'] = gamma
+            angles.at[pix, 'world'] = world
+        else:
+            angles.at[pix, 'collided'] = True
+            angles.at[pix, 'world'] = -1
 
 rays.to_csv("input.csv", sep=',', index=False, line_terminator='\n')
 final.to_csv("output.csv", sep=',', index=False, line_terminator='\n')

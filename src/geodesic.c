@@ -162,11 +162,12 @@ void perform_calculation(cl_context context,
                          cl_int *finished,
                          size_t num_objects,
                          real *args,
-                         size_t num_args)
+                         size_t num_args,
+                         FILE **output,
+                         cl_int num_steps)
 {
     int err;
     int i;
-    cl_int num_steps = 1000;
 
     cl_mem pos_mem;
     cl_mem dir_mem;
@@ -194,11 +195,35 @@ void perform_calculation(cl_context context,
     clSetKernelArg(kernel, 5, sizeof(cl_mem), &args_mem);
 
     real t;
+
+    if (output)
+    {
+        for (i = 0; i < num_objects; i++)
+        {
+           if (finished[i])
+               fprintf(output[i], "true");
+           else
+               fprintf(output[i], "false");
+           fprintf(output[i], ", %0.12lf", 0.0);
+           int j;
+           for (j = 0; j < DIM; j++)
+               fprintf(output[i], ", %0.12lf", (double)pos[DIM * i + j]);
+           for (j = 0; j < DIM; j++)
+               fprintf(output[i], ", %0.12lf", (double)dir[DIM * i + j]);
+           fprintf(output[i], "\n");
+        }
+    }
+
     for (t = 0; t < T; t += h * num_steps)
     {
         err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &num_objects, NULL, 0, NULL, NULL);
         clFinish(queue);
 
+        if (output)
+        {
+            err = clEnqueueReadBuffer(queue, pos_mem, CL_TRUE, 0, sizeof(real) * DIM * num_objects, pos, 0, NULL, NULL);
+            err = clEnqueueReadBuffer(queue, dir_mem, CL_TRUE, 0, sizeof(real) * DIM * num_objects, dir, 0, NULL, NULL);
+        }
         err = clEnqueueReadBuffer(queue, finished_mem, CL_TRUE, 0, sizeof(cl_int) * num_objects, finished, 0, NULL, NULL);
         clFinish(queue);
 
@@ -209,6 +234,25 @@ void perform_calculation(cl_context context,
             {
                 all_collided = false;
                 break;
+            }
+        }
+
+        if (output)
+        {
+            for (i = 0; i < num_objects; i++)
+            {
+                if (finished[i])
+                    fprintf(output[i], "true");
+                else
+                    fprintf(output[i], "false");
+                fprintf(output[i], ", %0.12lf", t);
+                int j;
+                for (j = 0; j < DIM; j++)
+                    fprintf(output[i], ", %0.12lf", (double)pos[DIM * i + j]);
+                for (j = 0; j < DIM; j++)
+                    fprintf(output[i], ", %0.12lf", (double)dir[DIM * i + j]);
+                fprintf(output[i], "\n");
+                fflush(output[i]);
             }
         }
 
@@ -258,6 +302,12 @@ int main(int argc, const char **argv)
     const char *output_fname = argv[2];
     const char *metric_fname = argv[3];
     const char *args_fname = argv[4];
+
+    const char *out_dirname = NULL;
+    if (argc >= 9)
+    {
+        out_dirname = argv[8];
+    }
 
     /* Read arguments */
     FILE *af = fopen(args_fname, "rt");
@@ -342,15 +392,35 @@ int main(int argc, const char **argv)
 
     printf("Select platform %i, device %i\n", platform_id, device_id);
 
+    FILE **output_rays = NULL;
+    if (out_dirname != NULL)
+    {
+        output_rays = malloc(sizeof(FILE*)*num_objects);
+        for (i = 0; i < num_objects; i++)
+        {
+            char fname[4096];
+            snprintf(fname, 4096, "%s/%05i.csv", out_dirname, i);
+            output_rays[i] = fopen(fname, "wt");
+            int j;
+
+            /*fprintf(output_rays[i], "collided,t");
+            for (j = 0; j < DIM; j++)
+                fprintf(output_rays[i], ",pos%i", j);
+            for (j = 0; j < DIM; j++)
+                fprintf(output_rays[i], ",dir%i", j);
+            fprintf(output_rays[i], "\n");*/
+        }
+    }
+
     perform_calculation(opencl_state.units[platform_id].context,
                         opencl_state.units[platform_id].commands[device_id],
                         opencl_state.units[platform_id].kernel,
-                        T, h, pos, dir, finished, num_objects, args, num_args);
+                        T, h, pos, dir, finished, num_objects, args, num_args, output_rays, num_steps);
 
     release_opencl(&opencl_state);
 
     FILE *output = fopen(output_fname, "wt");
-    fprintf(output, "collided");
+    fprintf(output, "finished");
     for (i = 0; i < DIM; i++)
         fprintf(output, ",pos%i", i);
     for (i = 0; i < DIM; i++)
@@ -365,12 +435,17 @@ int main(int argc, const char **argv)
             fprintf(output, "false");
         int j;
         for (j = 0; j < DIM; j++)
-            fprintf(output, ", %lf", (double)pos[DIM * i + j]);
+            fprintf(output, ",%lf", (double)pos[DIM * i + j]);
         for (j = 0; j < DIM; j++)
-            fprintf(output, ", %lf", (double)dir[DIM * i + j]);
+            fprintf(output, ",%lf", (double)dir[DIM * i + j]);
         fprintf(output, "\n");
     }
 
+    if (output_rays != NULL)
+    {
+        for (i = 0; i < num_objects; i++)
+            fclose(output_rays[i]);
+    }
     fclose(output);
     return 0;
 }
