@@ -11,6 +11,12 @@ void dispatcher_init(struct dispatcher_s *dispatcher, real *pos, real *dir, cl_i
     dispatcher->num_completed = 0;
     dispatcher->num_objects = num_objects;
     dispatcher->max_per_block = 256;
+    pthread_mutex_init(&dispatcher->mutex, NULL);
+}
+
+void dispatcher_release(struct dispatcher_s *dispatcher)
+{
+    pthread_mutex_destroy(&dispatcher->mutex);
 }
 
 size_t dispatcher_get_next_block(struct dispatcher_s *dispatcher,
@@ -25,6 +31,7 @@ size_t dispatcher_get_next_block(struct dispatcher_s *dispatcher,
         amount = dispatcher->max_per_block;
     }
 
+    pthread_mutex_lock(&dispatcher->mutex);
     size_t num = min(dispatcher->num_objects - dispatcher->num_completed, amount);
     if (num > 0)
     {
@@ -42,6 +49,7 @@ size_t dispatcher_get_next_block(struct dispatcher_s *dispatcher,
         *finished = &(dispatcher->finished[dispatcher->num_completed]);
         dispatcher->num_completed += num;
     }
+    pthread_mutex_unlock(&dispatcher->mutex);
     return num;
 }
 

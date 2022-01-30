@@ -239,5 +239,6 @@ int main(int argc, const char **argv)
             fclose(output_rays[i]);
     }
     fclose(output);
+    dispatcher_release(&dispatcher);
     return 0;
 }
