@@ -48,7 +48,7 @@ CURDIR = os.path.dirname(os.path.abspath(__file__))
 BINARY = os.path.join(CURDIR, "geodesic2")
 
 def run_calculation(rays, metric, args, length, h, save_rays_dir):
-    num_steps = 100
+    num_steps = 1000
 
     # saving initial to file
     input_file = tempfile.NamedTemporaryFile(mode='wt',delete=False)
@@ -181,11 +181,11 @@ def calculate_rays(rs, rays, T, h, metric, save_rays_dir):
 
 dimensions = 4
 rs = 1
-r0 = 1.8
+r0 = 15
 fov = math.pi*2
 pixels = 1000
-T = 130
-h = 5e-5
+T = 100
+h = 5e-4
 metric = 'schwarzschild'
 #metric = 'lemaitre'
 #metric = 'kruskal'

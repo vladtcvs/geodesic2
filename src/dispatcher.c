@@ -16,18 +16,21 @@ void dispatcher_init(struct dispatcher_s *dispatcher, real *pos, real *dir, cl_i
 size_t dispatcher_get_next_block(struct dispatcher_s *dispatcher, real **pos, real **dir, cl_int **finished, FILE ***output)
 {
     size_t num = min(dispatcher->num_objects - dispatcher->num_completed, dispatcher->max_per_block);
-    *pos = dispatcher->pos + dispatcher->num_completed;
-    *dir = dispatcher->dir + dispatcher->num_completed;
-    if (dispatcher->output != NULL)
+    if (num > 0)
     {
-        *output = dispatcher->output + dispatcher->num_completed;
-    }
-    else
-    {
-        *output = NULL;
-    }
+        *pos = &dispatcher->pos[dispatcher->num_completed];
+        *dir = &dispatcher->dir[dispatcher->num_completed];
+        if (dispatcher->output != NULL)
+        {
+            *output = &dispatcher->output[dispatcher->num_completed];
+        }
+        else
+        {
+            *output = NULL;
+        }
     
-    *finished = dispatcher->finished + dispatcher->num_completed;
-    dispatcher->num_completed += num;
+        *finished = &dispatcher->finished[dispatcher->num_completed];
+        dispatcher->num_completed += num;
+    }
     return num;
 }
