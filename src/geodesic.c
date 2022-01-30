@@ -162,8 +162,24 @@ int main(int argc, const char **argv)
     init_opencl(&opencl_state);
     init_opencl_program(&opencl_state, kernel_source);
 
-    int platform_id = 0;
+    int platform_id = -1;
     int device_id = 0;
+
+    for (i = 0; i < opencl_state.num_platforms; i++)
+    {
+        if (opencl_state.num_devices[i] > 0)
+        {
+            platform_id = i;
+            device_id = 0;
+            break;
+        }
+    }
+
+    if (platform_id == -1)
+    {
+        printf("No platform\n");
+        exit(0);
+    }
 
     printf("Select platform %i, device %i\n", platform_id, device_id);
 
