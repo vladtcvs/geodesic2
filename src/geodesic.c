@@ -67,13 +67,13 @@ size_t load_rays(const char *input_fname, real **pos, real **dir, cl_int **finis
         int j;
         for (j = 0; j < DIM; j++)
         {
-            *pos[i * DIM + j] = cpos[j];
-            *dir[i * DIM + j] = cdir[j];
+            (*pos)[i * DIM + j] = cpos[j];
+            (*dir)[i * DIM + j] = cdir[j];
         }
     }
     fclose(input);
     for (i = 0; i < num_objects; i++)
-        finished[i] = 0;
+        (*finished)[i] = 0;
 }
 
 int main(int argc, const char **argv)

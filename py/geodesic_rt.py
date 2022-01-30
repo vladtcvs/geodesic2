@@ -181,14 +181,14 @@ def calculate_rays(rs, rays, T, h, metric, save_rays_dir):
 
 dimensions = 4
 rs = 1
-r0 = 0.8
+r0 = 1.8
 fov = math.pi*2
 pixels = 1000
 T = 30
-h = 5e-6
-#metric = 'schwarzschild'
+h = 5e-5
+metric = 'schwarzschild'
 #metric = 'lemaitre'
-metric = 'kruskal'
+#metric = 'kruskal'
 
 #save_rays_dir = 'rays'
 save_rays_dir = None
