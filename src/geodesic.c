@@ -193,7 +193,7 @@ int main(int argc, const char **argv)
         FILE **boutput;
 
         size_t num_objects_in_block = dispatcher_get_next_block(&dispatcher, &bpos, &bdir, &bfinished, &boutput);
-        if (num_objects == 0)
+        if (num_objects_in_block == 0)
         {
             break;
         }

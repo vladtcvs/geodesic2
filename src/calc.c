@@ -107,7 +107,10 @@ void perform_calculation(struct calculation_unit_s *unit,
         printf("%lf / %lf\n", t, T);
 
         if (all_collided)
+        {
+            printf("All rays collided\n");
             break;
+        }
     }
 
     err = clEnqueueReadBuffer(unit->queue, pos_mem, CL_TRUE, 0, sizeof(real) * num_objects * DIM, pos, 0, NULL, NULL);
