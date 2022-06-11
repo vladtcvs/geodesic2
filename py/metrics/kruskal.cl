@@ -3,37 +3,79 @@ real euler(real x)
     return x * exp(x);
 }
 
-real W0(real x)
+real euler_dot(real x)
 {
-    if (x < -1)
-        return -1;
-    
-    real dy = 1e-8;
-    
-    real y1 = -1;
-    real y2 = 100000;
+    return (1+x)*exp(x);
+}
 
-    real e1 = euler(y1);
-    real e2 = euler(y2);
+real newton_iteration(real x, real y)
+{
+    // x' = x - f(x) / f'(x)
+    // f(x) = euler(x) - y
+    // x' = x - (x*exp(x) - y) / ((x+1)*exp(x))
+    real expx = exp(x);
+    return x - (x*expx - y) / ((x+1)*expx);
+}
 
-    while (y2 - y1 > dy)
+real W0_newton(real y)
+{
+    const real e = 2.718281828459045;
+    if (y <= -1)
+        return -1/e;
+    real x = 0;
+    real xn = x;
+    const real dx = 1e-8;
+
+    do
     {
-        real yv = (y1 + y2)/2;
-        real ev = euler(yv);
-
-        if (ev > x)
+        x = xn;
+        xn = newton_iteration(x, y);
+        if (xn <= -1)
         {
-            y2 = yv;
+            xn = (xn+x)/2;
+        }
+    } while (fabs(x - xn) > dx);
+
+    return xn;
+}
+
+real W0_binary(real y)
+{
+    const real e = 2.718281828459045;
+    if (y <= -1)
+        return -1/e;
+    
+    real dx = 1e-8;
+    
+    real x1 = -1;
+    real x2 = 100000;
+
+    real e1 = euler(x1);
+    real e2 = euler(x2);
+
+    while (x2 - x1 > dx)
+    {
+        real xv = (x1 + x2)/2;
+        real ev = euler(xv);
+
+        if (ev > y)
+        {
+            x2 = xv;
             e2 = ev;
         }
         else
         {
-            y1 = yv;
+            x1 = xv;
             e1 = ev;
         }
     }
 
-    return (y1 + y2)/2;
+    return (x1 + x2)/2;
+}
+
+real W0(real y)
+{
+    return W0_newton(y);
 }
 
 real radius_relative(real T, real X)
