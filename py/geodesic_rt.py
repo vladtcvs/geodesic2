@@ -187,13 +187,13 @@ dimensions = 4
 with open(sys.argv[1]) as f:
     profile  = yaml.safe_load(f)
 
-rs = float(profile["rs"])
-r0 = float(profile["r0"])
-fov = float(profile["fov"])
-pixels = int(profile["nrays"])
-T = float(profile["T"])
-h = float(profile["h"])
-metric = profile["metric"]
+rs = float(profile["scene"]["rs"])
+r0 = float(profile["scene"]["r0"])
+fov = float(profile["scene"]["fov"])*math.pi/180
+pixels = int(profile["scene"]["nrays"])
+T = float(profile["scene"]["T"])
+h = float(profile["scene"]["h"])
+metric = profile["scene"]["metric"]
 
 #metric = 'schwarzschild'
 #metric = 'lemaitre'
@@ -228,6 +228,6 @@ for pix in range(pixels):
             angles.at[pix, 'world'] = -1
 
 print("Saving results")
-rays.to_csv(profile["input"], sep=',', index=False, line_terminator='\n')
-final.to_csv(profile["output"], sep=',', index=False, line_terminator='\n')
-angles.to_csv(profile["angles"], sep=',', index=False, line_terminator='\n')
+rays.to_csv(profile["scene"]["files"]["input"], sep=',', index=False, line_terminator='\n')
+final.to_csv(profile["scene"]["files"]["output"], sep=',', index=False, line_terminator='\n')
+angles.to_csv(profile["scene"]["files"]["angles"], sep=',', index=False, line_terminator='\n')

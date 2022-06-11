@@ -6,6 +6,8 @@ import sys
 
 import multiprocessing as mp
 
+import yaml
+
 def normalize_block(block):
     nrise = 0
     nfall = 0
@@ -169,7 +171,7 @@ def getpixel(theta, phi, image):
 
     return imm * ymc*xmc + imp * ymc*xpc + ipm * ypc*xmc + ipp * ypc*xpc
 
-def calculate_pixel(img, Y, X, H, W, base_phi, view_phi1, view_phi2, sky1, sky2):
+def calculate_pixel(img, Y, X, H, W, base_phi, universes):
     TH = Y / H * math.pi
     PHI = X / W * 2 * math.pi + base_phi
 
@@ -188,46 +190,33 @@ def calculate_pixel(img, Y, X, H, W, base_phi, view_phi1, view_phi2, sky1, sky2)
 
         theta, phi = direction(vv)
 
-        if world == 1:
-            img[Y, X] = getpixel(theta, phi + view_phi1, sky1)
-        elif world == 2:
-            img[Y, X] = getpixel(theta, phi + view_phi2, sky2)
+        if world in universes:
+            img[Y, X] = getpixel(theta, phi + universes[world]["phi"], universes[world]["skymap"])
+        else:
+            img[Y, X] = 0
 
-# resulting image size
-fov = 2*math.pi/3
-H = 3500
+with open(sys.argv[1]) as f:
+    profile  = yaml.safe_load(f)
+
+H = int(profile["imager"]["H"])
 W = H*2
 
 img = np.zeros((H, W, 3))
 
-w = 2 * math.tan(fov/2)
-h = 2 * math.tan(fov/2)
-
-rays = pd.read_csv('input.csv', sep=',')
-final = pd.read_csv('output.csv', sep=',')
-angles  = pd.read_csv("angles.csv", sep=',')
-
-pd.set_option('display.max_rows', 1000)
-#print(angles)
+angles  = pd.read_csv(profile["scene"]["files"]["angles"], sep=',')
 
 angle_blocks = prepare_table(angles)
-#print(angle_blocks)
-#print(approximate_angle(angle_blocks, 0.3))
-#sys.exit()
 
-sky1_fname = "sky_map.png"
-sky2_fname = "sky_map2.png"
+universes_desc  = profile["imager"]["universes"]
+base_phi   = float(profile["imager"]["viewer_orientation"])*math.pi/180
 
-base_phi = math.pi
-
-view_phi1 = 120 * math.pi / 180
-view_phi2 = 20 * math.pi / 180
-
-sky1 = np.asarray(imageio.imread(sky1_fname))
-sky1 = sky1 / np.amax(sky1)
-
-sky2 = np.asarray(imageio.imread(sky2_fname))
-sky2 = sky2 / np.amax(sky2)
+universes = {}
+for id in universes_desc:
+    fname = universes_desc[id]["skymap"]
+    orientation = float(universes_desc[id]["orientation"])*math.pi/180
+    skymap = np.asarray(imageio.imread(fname))
+    skymap = skymap / np.amax(skymap)
+    universes[id] = {"phi" : orientation, "skymap" : skymap}
 
 e = [1, 0, 0]
 
@@ -235,7 +224,7 @@ args = []
 for Y in range(H):
     print("%i / %i" % (Y, H))
     for X in range(W):
-        calculate_pixel(img, Y, X, H, W, base_phi, view_phi1, view_phi2, sky1, sky2)
+        calculate_pixel(img, Y, X, H, W, base_phi, universes)
 
-imageio.imwrite("black_hole.png", img)
+imageio.imwrite(profile["imager"]["output"], img)
 

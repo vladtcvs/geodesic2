@@ -54,16 +54,18 @@ python3 geodesic_rt.py profile.yaml
 
 ```
 ---
-rs: 1                       # schwarzschild radius
-r0: 15                      # observer position
-fov: 6.282                  # FOV ob observer (2 pi)
-nrays: 640                  # number of rays to emit
-T: 100                      # iteration limit
-h: 5e-4                     # iteration step
-metric: schwarzschild       # metric representation. Can also be kruskal and lemaitre
-input:  calcs/input.csv     # file with initial rays pos, dir
-output: calcs/output.csv    # file with final rays pos, dir
-angles: calcs/angles.csv    # file with initial angle to final angle transformation
+scene:
+  rs: 1                       # schwarzschild radius
+  r0: 15                      # observer position
+  fov: 360                    # FOV of observer (2 pi)
+  nrays: 640                  # number of rays to emit
+  T: 100                      # iteration limit
+  h: 5e-4                     # iteration step
+  metric: schwarzschild       # metric representation. Can also be kruskal and lemaitre
+  files:
+    input:  calcs/input.csv     # file with initial rays pos, dir
+    output: calcs/output.csv    # file with final rays pos, dir
+    angles: calcs/angles.csv    # file with initial angle to final angle transformation
 ```
 
 # Image generator
@@ -71,4 +73,34 @@ angles: calcs/angles.csv    # file with initial angle to final angle transformat
 Generate image
 
 ```
+python3 build_image.py profile.yaml
+```
+
+profile.yaml should be filled with imager section:
+
+```
+---
+scene:
+  rs: 1                       # schwarzschild radius
+  r0: 15                      # observer position
+  fov: 360                    # FOV of observer (2 pi)
+  nrays: 640                  # number of rays to emit
+  T: 100                      # iteration limit
+  h: 5e-4                     # iteration step
+  metric: schwarzschild       # metric representation. Can also be kruskal and lemaitre
+  files:
+    input:  calcs/input.csv     # file with initial rays pos, dir
+    output: calcs/output.csv    # file with final rays pos, dir
+    angles: calcs/angles.csv    # file with initial angle to final angle transformation
+imager:
+  H: 700                      # Height of resulting image in pixels. Width will be 2*H
+  viewer_orientation: 90
+  universes:
+    1:
+      skymap:       images/skymap_1.png
+      orientation:  120
+    2:
+      skymap:       images/skymap_2.png
+      orientation:  60
+  output: images/bh.png       # resulting image
 ```
