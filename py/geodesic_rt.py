@@ -8,6 +8,9 @@ import lemaitre
 import kruskal
 import schwarzschild
 
+import sys
+import yaml
+
 ray = {
     "schwarzschild" : schwarzschild.ray,
     "lemaitre" : lemaitre.ray,
@@ -180,13 +183,19 @@ def calculate_rays(rs, rays, T, h, metric, save_rays_dir):
     return final
 
 dimensions = 4
-rs = 1
-r0 = 15
-fov = math.pi*2
-pixels = 3000
-T = 100
-h = 5e-4
-metric = 'schwarzschild'
+
+with open(sys.argv[1]) as f:
+    profile  = yaml.safe_load(f)
+
+rs = float(profile["rs"])
+r0 = float(profile["r0"])
+fov = float(profile["fov"])
+pixels = int(profile["nrays"])
+T = float(profile["T"])
+h = float(profile["h"])
+metric = profile["metric"]
+
+#metric = 'schwarzschild'
 #metric = 'lemaitre'
 #metric = 'kruskal'
 
@@ -218,6 +227,7 @@ for pix in range(pixels):
             angles.at[pix, 'collided'] = True
             angles.at[pix, 'world'] = -1
 
-rays.to_csv("input.csv", sep=',', index=False, line_terminator='\n')
-final.to_csv("output.csv", sep=',', index=False, line_terminator='\n')
-angles.to_csv("angles.csv", sep=',', index=False, line_terminator='\n')
+print("Saving results")
+rays.to_csv(profile["input"], sep=',', index=False, line_terminator='\n')
+final.to_csv(profile["output"], sep=',', index=False, line_terminator='\n')
+angles.to_csv(profile["angles"], sep=',', index=False, line_terminator='\n')
