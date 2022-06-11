@@ -54,13 +54,16 @@ python3 geodesic_rt.py profile.yaml
 
 ```
 ---
-rs: 1                 # schwarzschild radius
-r0: 15                # observer position
-fov: 6.282            # FOV ob observer (2 pi)
-nrays: 640            # number of rays to emit
-T: 100                # iteration limit
-h: 5e-4               # iteration step
-metric: schwarzschild # metric representation
+rs: 1                       # schwarzschild radius
+r0: 15                      # observer position
+fov: 6.282                  # FOV ob observer (2 pi)
+nrays: 640                  # number of rays to emit
+T: 100                      # iteration limit
+h: 5e-4                     # iteration step
+metric: schwarzschild       # metric representation. Can also be kruskal and lemaitre
+input:  calcs/input.csv     # file with initial rays pos, dir
+output: calcs/output.csv    # file with final rays pos, dir
+angles: calcs/angles.csv    # file with initial angle to final angle transformation
 ```
 
 # Image generator
