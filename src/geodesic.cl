@@ -290,10 +290,12 @@ kernel void kernel_geodesic(int num, __global real *pos, __global real *dir, __g
         cdir.x[i] = dir[DIM*id + i];
     }
 
+    bool bad_ray = false;
 	for (i = 0; i < num; i++)
     {
         if (!allowed_area(&cpos, args))
         {
+            bad_ray = true;
             finished[id] = 1;
             break;
         }
@@ -307,10 +309,12 @@ kernel void kernel_geodesic(int num, __global real *pos, __global real *dir, __g
         }
     }
 
-    for (i = 0; i < DIM; i++)
+    if (!bad_ray)
     {
-        pos[DIM*id + i] = cpos.x[i];
-        dir[DIM*id + i] = cdir.x[i];
+        for (i = 0; i < DIM; i++)
+        {
+            pos[DIM*id + i] = cpos.x[i];
+            dir[DIM*id + i] = cdir.x[i];
+        }
     }
 }
-
