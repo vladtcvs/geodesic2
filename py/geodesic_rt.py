@@ -4,54 +4,18 @@ import pandas as pd
 import subprocess
 import math
 
-import lemaitre
-import kruskal
-import schwarzschild
+import metrics.lemaitre as lemaitre
+import metrics.kruskal as kruskal
+import metrics.schwarzschild as schwarzschild
 
 import sys
 import yaml
 
-ray = {
-    "schwarzschild" : schwarzschild.ray,
-    "lemaitre" : lemaitre.ray,
-    "kruskal" : kruskal.ray,
-}
-
-transform_to = {
-    "schwarzschild" : schwarzschild.transform_to,
-    "lemaitre" : lemaitre.transform_to,
-    "kruskal" : kruskal.transform_to,
-}
-
-transform_from = {
-    "schwarzschild" : schwarzschild.transform_from,
-    "lemaitre" : lemaitre.transform_from,
-    "kruskal" : kruskal.transform_from,
-}
-
-collision = {
-    "schwarzschild" : schwarzschild.collision,
-    "lemaitre" : lemaitre.collision,
-    "kruskal" : kruskal.collision,
-}
-
-def build_ray(metric, r0, alpha, rs):
-    return ray[metric](r0, alpha, rs)
-
-def transform_from_target(metric, pos, dir, rs):
-    return transform_from[metric](pos, dir, rs)
-
-def transform_to_target(metric, pos, dir, rs):
-    return transform_to[metric](pos, dir, rs)
-
-def check_collision(metric, pos, rs):
-    return collision[metric](pos, rs)
 
 CURDIR = os.path.dirname(os.path.abspath(__file__))
 BINARY = os.path.join(CURDIR, "geodesic2")
 
-def run_calculation(rays, metric, args, length, h, save_rays_dir):
-    num_steps = 1000
+def run_calculation(rays, metric, args, length, h, num_steps, save_rays_dir):
 
     # saving initial to file
     input_file = tempfile.NamedTemporaryFile(mode='wt',delete=False)
@@ -108,7 +72,7 @@ def run_calculation(rays, metric, args, length, h, save_rays_dir):
     os.remove(args_fname)
     return result
 
-def init_rays(rs, r0, fov, nrays, metric):
+def init_rays(space, t0, r0, fov, nrays):
     columns = []
     dtypes = []
 
@@ -127,7 +91,7 @@ def init_rays(rs, r0, fov, nrays, metric):
     for i in range(nrays):
         angle = fov/2 * i / (nrays - 1)
 
-        valid, pos, dir = build_ray(metric, r0, angle, rs)
+        valid, pos, dir = space.emit_ray(t0, r0, angle)
 
         maxd = max([abs(item) for item in dir])
         if maxd > 10:
@@ -141,9 +105,9 @@ def init_rays(rs, r0, fov, nrays, metric):
 
     return rays, angles
 
-def get_output_angle(metric, pos, dir, rs):
-    valid, pos, dir, attrs = transform_from_target(metric, pos, dir, rs)
-    if not valid:
+def get_output_angle(space, pos, dir):
+    pos_valid, dir_valid, pos, dir, attrs = space.transform_from(pos, dir)
+    if (not pos_valid) or (not dir_valid):
         return False, 0, None
 
     r = pos[1]
@@ -156,7 +120,7 @@ def get_output_angle(metric, pos, dir, rs):
     dr /= abs(dt)
     dphi /= abs(dt)
 
-    alpha = math.atan2((r-rs)*dphi, -dr)
+    alpha = math.atan2((r-space.rs)*dphi, -dr)
     gamma = math.pi - (phi + (math.pi - alpha))
 
     while gamma < -math.pi:
@@ -164,22 +128,16 @@ def get_output_angle(metric, pos, dir, rs):
     while gamma > math.pi:
         gamma -= math.pi*2
 
-    if metric == "kruskal":
-        area = attrs["area"]
-        if area == 1:
-            world = 1
-        elif area == 3:
-            world = 2
-        else:
-            world = None
+    if "area" in attrs:
+        world = attrs["area"]
     else:
         world = 1
     return True, gamma, world
 
-def calculate_rays(rs, rays, T, h, metric, save_rays_dir):
+def calculate_rays(rs, rays, T, h, numsteps, metric, save_rays_dir):
     args = pd.DataFrame(columns=['arg'])
     args.loc[0] = [rs]
-    final = run_calculation(rays, "metrics/" + metric, args, T, h, save_rays_dir)
+    final = run_calculation(rays, "metrics/cl/" + metric, args, T, h, numsteps, save_rays_dir)
     return final
 
 dimensions = 4
@@ -188,22 +146,33 @@ with open(sys.argv[1]) as f:
     profile  = yaml.safe_load(f)
 
 rs = float(profile["scene"]["rs"])
+t0 = float(profile["scene"]["t0"])
 r0 = float(profile["scene"]["r0"])
 fov = float(profile["scene"]["fov"])*math.pi/180
 pixels = int(profile["scene"]["nrays"])
 T = float(profile["scene"]["T"])
 h = float(profile["scene"]["h"])
+numsteps = int(profile["scene"]["numsteps"])
 metric = profile["scene"]["metric"]
 
 #metric = 'schwarzschild'
 #metric = 'lemaitre'
 #metric = 'kruskal'
 
-#save_rays_dir = 'rays'
-save_rays_dir = None
+save_rays_dir = 'rays'
+#save_rays_dir = None
 
-rays, angles = init_rays(rs, r0, fov, pixels, metric)
-final = calculate_rays(rs, rays, T, h, metric, save_rays_dir)
+if metric == "schwarzschild":
+    space = schwarzschild.SchwarzschildSpace(rs)
+elif metric == "lemaitre":
+    space = lemaitre.LemaitreSpace(rs)
+elif metric == "kruskal":
+    space = kruskal.KruskalSpace(rs)
+else:
+    raise "Unknown metric"
+
+rays, angles = init_rays(space, t0, r0, fov, pixels)
+final = calculate_rays(rs, rays, T, h, numsteps, metric, save_rays_dir)
 
 angles['final_angle'] = pd.Series(0.0, index=angles.index)
 angles['collided'] = pd.Series(False, index=angles.index)
@@ -212,13 +181,13 @@ for pix in range(pixels):
     pos = [final.loc[pix]['pos%i' % i] for i in range(dimensions)]
     dir = [final.loc[pix]['dir%i' % i] for i in range(dimensions)]
 
-    is_collided = check_collision(metric, pos, rs)
+    is_collided = space.check_collision(pos)
 
     if is_collided:
         angles.at[pix, 'collided'] = True
         angles.at[pix, 'world'] = -1
     else:
-        valid, gamma, world = get_output_angle(metric, pos, dir, rs)
+        valid, gamma, world = get_output_angle(space, pos, dir)
 
         if valid:
             angles.at[pix, 'final_angle'] = gamma

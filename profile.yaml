@@ -1,12 +1,14 @@
 ---
 scene:
   rs: 1                       # schwarzschild radius
-  r0: 0.4                     # observer position
+  t0: 1                       # observer time
+  r0: 0.6                     # observer position
   fov: 360                    # FOV of observer (2 pi)
-  nrays: 1000                 # number of rays to emit
-  T: 100                      # iteration limit
+  nrays: 360                  # number of rays to emit
+  T: 40                       # iteration limit
   h: 5e-4                     # iteration step
-  metric: kruskal             # metric representation. Can also be kruskal and lemaitre
+  numsteps: 100               # iteration steps between save
+  metric: kruskal             # metric representation. Can be [schwarzschild, kruskal, lemaitre]
   files:
     input:  calcs/input.csv     # file with initial rays pos, dir
     output: calcs/output.csv    # file with final rays pos, dir
@@ -18,7 +20,7 @@ imager:
     1:
       skymap:       images/skymap_1.png
       orientation:  120
-    2:
+    3:
       skymap:       images/skymap_2.png
       orientation:  60
   output: images/bh.png       # resulting image
