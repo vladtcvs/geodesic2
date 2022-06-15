@@ -16,7 +16,7 @@ const char *load_source(const char *fname)
     FILE *f = fopen(fname, "rb");
     if (f == NULL)
     {
-        printf("Can not open file %s. Exiting.", fname);
+        printf("Can not open file [%s]. Exiting.\n", fname);
         exit(1);
     }
 

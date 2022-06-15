@@ -155,11 +155,16 @@ h = float(profile["scene"]["h"])
 numsteps = int(profile["scene"]["numsteps"])
 metric = profile["scene"]["metric"]
 
+if "save_rays_dir" in profile["scene"]:
+    save_rays_dir = profile["scene"]["save_rays_dir"]
+else:
+    save_rays_dir = None
+
 #metric = 'schwarzschild'
 #metric = 'lemaitre'
 #metric = 'kruskal'
 
-save_rays_dir = 'rays'
+#save_rays_dir = 'rays'
 #save_rays_dir = None
 
 if metric == "schwarzschild":

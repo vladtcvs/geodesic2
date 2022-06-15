@@ -75,7 +75,8 @@ real W0_binary(real y)
 
 real W0(real y)
 {
-    return W0_newton(y);
+//    return W0_newton(y);
+    return W0_binary(y);
 }
 
 real radius_relative(real T, real X)
